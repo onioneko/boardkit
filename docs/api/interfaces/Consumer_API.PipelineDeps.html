@@ -16,7 +16,7 @@
 </div></section>
 <div class="tsd-signature"><span class="tsd-signature-keyword">interface</span> <span class="tsd-kind-interface">PipelineDeps</span> <span class="tsd-signature-symbol">{</span><br/>    <a class="tsd-kind-property" href="#blocktypes">blockTypes</a><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">ReadonlyMap</span><span class="tsd-signature-symbol">&lt;</span><span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">,</span> <a href="../types/Consumer_API.AnyBlockType.html" class="tsd-signature-type tsd-kind-type-alias">AnyBlockType</a><span class="tsd-signature-symbol">&gt;</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#cachedparse">cachedParse</a><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-symbol">(</span><span class="tsd-kind-parameter">docId</span><span class="tsd-signature-symbol">:</span> <a href="../types/Consumer_API.DocId.html" class="tsd-signature-type tsd-kind-type-alias">DocId</a><span class="tsd-signature-symbol">,</span> <span class="tsd-kind-parameter">src</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">)</span> <span class="tsd-signature-symbol">=&gt;</span> <a href="Consumer_API.ParsedDoc.html" class="tsd-signature-type tsd-kind-interface">ParsedDoc</a> <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">undefined</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#clock">clock</a><span class="tsd-signature-symbol">:</span> <a href="../types/Consumer_API.Clock.html" class="tsd-signature-type tsd-kind-type-alias">Clock</a><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#commitid">commitId</a><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-symbol">(</span><span class="tsd-kind-parameter">docId</span><span class="tsd-signature-symbol">:</span> <a href="../types/Consumer_API.DocId.html" class="tsd-signature-type tsd-kind-type-alias">DocId</a><span class="tsd-signature-symbol">,</span> <span class="tsd-kind-parameter">version</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">)</span> <span class="tsd-signature-symbol">=&gt;</span> <span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#complexitylimits">complexityLimits</a><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">false</span> <span class="tsd-signature-symbol">|</span> <a href="Consumer_API.ComplexityLimits.html" class="tsd-signature-type tsd-kind-interface">ComplexityLimits</a><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#maxdocumentbytes">maxDocumentBytes</a><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">number</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#middleware">middleware</a><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-keyword">readonly</span> <a href="../types/Consumer_API.WriteMiddleware.html" class="tsd-signature-type tsd-kind-type-alias">WriteMiddleware</a><span class="tsd-signature-symbol">[]</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#oncommit">onCommit</a><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-symbol">(</span><span class="tsd-kind-parameter">commit</span><span class="tsd-signature-symbol">:</span> <a href="Consumer_API.CommitEffect.html" class="tsd-signature-type tsd-kind-interface">CommitEffect</a><span class="tsd-signature-symbol">)</span> <span class="tsd-signature-symbol">=&gt;</span> <span class="tsd-signature-type">void</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#parseoptions">parseOptions</a><span class="tsd-signature-symbol">?:</span> <a href="Consumer_API.ParseOptions.html" class="tsd-signature-type tsd-kind-interface">ParseOptions</a><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#policy">policy</a><span class="tsd-signature-symbol">?:</span> <a href="Consumer_API.WritePolicy.html" class="tsd-signature-type tsd-kind-interface">WritePolicy</a><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#storage">storage</a><span class="tsd-signature-symbol">:</span> <a href="Consumer_API.Storage.html" class="tsd-signature-type tsd-kind-interface">Storage</a><span class="tsd-signature-symbol">;</span><br/><span class="tsd-signature-symbol">}</span></div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/write/pipeline.ts#L138">packages/core/src/write/pipeline.ts:138</a></li></ul></aside>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/write/pipeline.ts#L137">packages/core/src/write/pipeline.ts:137</a></li></ul></aside>
 <section class="tsd-panel-group tsd-index-group">
 <section class="tsd-panel tsd-index-panel">
 <details class="tsd-index-content tsd-accordion" open><summary class="tsd-accordion-summary tsd-index-summary"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><use href="../assets/icons.svg#icon-chevronDown"></use></svg>
@@ -45,7 +45,7 @@
 <div class="tsd-comment tsd-typography"><p>Registered block types, keyed by type name.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/write/pipeline.ts#L144">packages/core/src/write/pipeline.ts:144</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/write/pipeline.ts#L143">packages/core/src/write/pipeline.ts:143</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="cachedparse"><code class="tsd-tag">Optional</code> <code class="tsd-tag">Readonly</code><span>cached<wbr/>Parse</span><a href="#cachedparse" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">cachedParse</span><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-symbol">(</span><span class="tsd-kind-parameter">docId</span><span class="tsd-signature-symbol">:</span> <a href="../types/Consumer_API.DocId.html" class="tsd-signature-type tsd-kind-type-alias">DocId</a><span class="tsd-signature-symbol">,</span> <span class="tsd-kind-parameter">src</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">)</span> <span class="tsd-signature-symbol">=&gt;</span> <a href="Consumer_API.ParsedDoc.html" class="tsd-signature-type tsd-kind-interface">ParsedDoc</a> <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">undefined</span></div>
@@ -56,14 +56,14 @@ complexity checks, so it must only return parses of content that passed
 them.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/write/pipeline.ts#L182">packages/core/src/write/pipeline.ts:182</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/write/pipeline.ts#L181">packages/core/src/write/pipeline.ts:181</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="clock"><code class="tsd-tag">Readonly</code><span>clock</span><a href="#clock" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">clock</span><span class="tsd-signature-symbol">:</span> <a href="../types/Consumer_API.Clock.html" class="tsd-signature-type tsd-kind-type-alias">Clock</a></div>
 <div class="tsd-comment tsd-typography"><p>Timestamp source for emitted events.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/write/pipeline.ts#L142">packages/core/src/write/pipeline.ts:142</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/write/pipeline.ts#L141">packages/core/src/write/pipeline.ts:141</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="commitid"><code class="tsd-tag">Optional</code> <code class="tsd-tag">Readonly</code><span>commit<wbr/>Id</span><a href="#commitid" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">commitId</span><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-symbol">(</span><span class="tsd-kind-parameter">docId</span><span class="tsd-signature-symbol">:</span> <a href="../types/Consumer_API.DocId.html" class="tsd-signature-type tsd-kind-type-alias">DocId</a><span class="tsd-signature-symbol">,</span> <span class="tsd-kind-parameter">version</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">)</span> <span class="tsd-signature-symbol">=&gt;</span> <span class="tsd-signature-type">string</span></div>
@@ -74,7 +74,7 @@ Absent, defaultCommitId gives each commit a random id, unique but
 not reproducible; pass a minter for deterministic ids.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/write/pipeline.ts#L174">packages/core/src/write/pipeline.ts:174</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/write/pipeline.ts#L173">packages/core/src/write/pipeline.ts:173</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="complexitylimits"><code class="tsd-tag">Optional</code> <code class="tsd-tag">Readonly</code><span>complexity<wbr/>Limits</span><a href="#complexitylimits" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">complexityLimits</span><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">false</span> <span class="tsd-signature-symbol">|</span> <a href="Consumer_API.ComplexityLimits.html" class="tsd-signature-type tsd-kind-interface">ComplexityLimits</a></div>
@@ -86,7 +86,7 @@ value is validated on use: an invalid one is a programming error, and the
 write rejects with a <code>TypeError</code>, as <code>createEngine</code> throws for it.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/write/pipeline.ts#L166">packages/core/src/write/pipeline.ts:166</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/write/pipeline.ts#L165">packages/core/src/write/pipeline.ts:165</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="maxdocumentbytes"><code class="tsd-tag">Optional</code> <code class="tsd-tag">Readonly</code><span>max<wbr/>Document<wbr/>Bytes</span><a href="#maxdocumentbytes" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">maxDocumentBytes</span><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">number</span></div>
@@ -96,44 +96,44 @@ is rejected with reason <code>too-large</code>, and a stored document over it is
 parsed: patches and intents against it are rejected the same way.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/write/pipeline.ts#L157">packages/core/src/write/pipeline.ts:157</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/write/pipeline.ts#L156">packages/core/src/write/pipeline.ts:156</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="middleware"><code class="tsd-tag">Optional</code> <code class="tsd-tag">Readonly</code><span>middleware</span><a href="#middleware" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">middleware</span><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-keyword">readonly</span> <a href="../types/Consumer_API.WriteMiddleware.html" class="tsd-signature-type tsd-kind-type-alias">WriteMiddleware</a><span class="tsd-signature-symbol">[]</span></div>
 <div class="tsd-comment tsd-typography"><p>Write middleware wrapping the whole pipeline (amend/reject/observe).</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/write/pipeline.ts#L150">packages/core/src/write/pipeline.ts:150</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/write/pipeline.ts#L149">packages/core/src/write/pipeline.ts:149</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="oncommit"><code class="tsd-tag">Optional</code> <code class="tsd-tag">Readonly</code><span>on<wbr/>Commit</span><a href="#oncommit" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">onCommit</span><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-symbol">(</span><span class="tsd-kind-parameter">commit</span><span class="tsd-signature-symbol">:</span> <a href="Consumer_API.CommitEffect.html" class="tsd-signature-type tsd-kind-interface">CommitEffect</a><span class="tsd-signature-symbol">)</span> <span class="tsd-signature-symbol">=&gt;</span> <span class="tsd-signature-type">void</span></div>
 <div class="tsd-comment tsd-typography"><p>Called once per commit, right after the bytes land and before any event
 is appended, with what the commit did. The engine seeds its parse cache
-from it and updates its include index. It must not throw.</p>
+from it and invalidates its include index. It must not throw.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/write/pipeline.ts#L188">packages/core/src/write/pipeline.ts:188</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/write/pipeline.ts#L187">packages/core/src/write/pipeline.ts:187</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="parseoptions"><code class="tsd-tag">Optional</code> <code class="tsd-tag">Readonly</code><span>parse<wbr/>Options</span><a href="#parseoptions" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">parseOptions</span><span class="tsd-signature-symbol">?:</span> <a href="Consumer_API.ParseOptions.html" class="tsd-signature-type tsd-kind-interface">ParseOptions</a></div>
 <div class="tsd-comment tsd-typography"><p>Parse options used to re-parse documents during the pipeline.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/write/pipeline.ts#L146">packages/core/src/write/pipeline.ts:146</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/write/pipeline.ts#L145">packages/core/src/write/pipeline.ts:145</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="policy"><code class="tsd-tag">Optional</code> <code class="tsd-tag">Readonly</code><span>policy</span><a href="#policy" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">policy</span><span class="tsd-signature-symbol">?:</span> <a href="Consumer_API.WritePolicy.html" class="tsd-signature-type tsd-kind-interface">WritePolicy</a></div>
 <div class="tsd-comment tsd-typography"><p>Write-domain policy; absent means allow-all.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/write/pipeline.ts#L148">packages/core/src/write/pipeline.ts:148</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/write/pipeline.ts#L147">packages/core/src/write/pipeline.ts:147</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="storage"><code class="tsd-tag">Readonly</code><span>storage</span><a href="#storage" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">storage</span><span class="tsd-signature-symbol">:</span> <a href="Consumer_API.Storage.html" class="tsd-signature-type tsd-kind-interface">Storage</a></div>
 <div class="tsd-comment tsd-typography"><p>Where document bytes live.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/write/pipeline.ts#L140">packages/core/src/write/pipeline.ts:140</a></li></ul></aside></section></section></details></div>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/write/pipeline.ts#L139">packages/core/src/write/pipeline.ts:139</a></li></ul></aside></section></section></details></div>
 <div class="col-sidebar">
 <div class="page-menu">
 <div class="tsd-navigation settings">

@@ -126,14 +126,14 @@ const unsubscribe = engine.subscribe("fin", (evt) => {
 unsubscribe();
 ```
 
-The engine keeps the include graph behind scoped delivery up to date as documents change. It
-re-reads a subscribed board's include closure only when a commit may have changed an include
-edge in it: a commit that adds, removes or retargets an `{{include:…}}`, renames a section, or
-creates, imports or removes a document. Other edits re-read nothing. The graph follows every
-commit made through the engine and every external write reported through `watch` (or
-`engine.externalWrite`). A document changed in storage behind the engine's back, with no watch,
-is seen once it is next committed or reported, or once a resolution for another subscriber reads
-it.
+The engine rebuilds the include graph behind scoped delivery before a write delivers its events,
+whenever something may have changed it since the last rebuild: a commit through the engine, an
+external write reported through `watch` (or `engine.externalWrite`), a subscribe or an
+unsubscribe, or a `registerBlock`. A rebuild re-reads every subscribed board's include closure
+from storage, but it reuses the parse of every document whose content has not changed, so it
+parses and scans only content the engine has not seen. A document changed in storage behind the
+engine's back, with no watch and no `engine.externalWrite`, gets no events of its own; its include
+edges are picked up by the next rebuild.
 
 Document ids are compared exactly, case included. On a case-insensitive file system,
 `{{include:Notes}}` and a commit to `notes` touch the same file but name different documents, so
