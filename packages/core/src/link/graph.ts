@@ -96,15 +96,6 @@ export interface LinkOptions {
    */
   readonly cached?: (docId: DocId, src: string) => ParsedDoc | undefined;
   /**
-   * Called once per resolution pass for every document the pass read: with
-   * its source when it was parsed (whether or not the pass then visited it,
-   * as for the target of a `missing-section` include), or `undefined` when it
-   * could not be loaded (missing, unreadable, outside the workspace, over a
-   * limit, or a parse that threw). The engine uses it to notice documents
-   * that changed behind its back.
-   */
-  readonly onRead?: (docId: DocId, src: string | undefined) => void;
-  /**
    * Documents over this many UTF-8 bytes are not parsed: the board yields an
    * empty result and an include of one is left unexpanded, each with an
    * `E_DOCUMENT_TOO_LARGE` diagnostic. Defaults to `DEFAULT_MAX_DOCUMENT_BYTES` (256 KiB).
@@ -186,12 +177,6 @@ export async function resolveIncludes(
     | { readonly ok: true; readonly src: undefined; readonly tooLarge: Diagnostic }
     | { readonly ok: false; readonly err: unknown };
   const reads = new Map<DocId, ReadResult>();
-  const noted = new Set<DocId>();
-  const note = (id: DocId, src: string | undefined): void => {
-    if (link.onRead === undefined || noted.has(id)) return;
-    noted.add(id);
-    link.onRead(id, src);
-  };
   const parses = new Map<DocId, ParsedDoc | Diagnostic>();
   const sectionIds = new Map<DocId, ReadonlySet<SectionId>>();
 
@@ -210,8 +195,6 @@ export async function resolveIncludes(
       }
     }
     reads.set(id, result);
-    // A source that was read is noted when it is loaded (or fails to load).
-    if (!result.ok || result.src === undefined) note(id, undefined);
     return result;
   }
 
@@ -238,12 +221,9 @@ export async function resolveIncludes(
     const known = parses.get(id) ?? link.cached?.(id, src);
     if (known !== undefined) {
       parses.set(id, known);
-      note(id, src);
       return known;
     }
-    const loaded = overLimit(id, src) ?? parsedOf(id, src);
-    note(id, "nodes" in loaded ? src : undefined);
-    return loaded;
+    return overLimit(id, src) ?? parsedOf(id, src);
   }
 
   function hasSection(id: DocId, parsed: ParsedDoc, sectionId: SectionId): boolean {
@@ -410,20 +390,4 @@ export function buildReverseIndex(
     set.add(edge.fromDoc);
   }
   return new Map([...index.entries()].map(([docId, set]) => [docId, set as ReadonlySet<DocId>]));
-}
-
-/**
- * What {@link resolveIncludes} reads from a parsed document, as a comparable
- * string: its include references in order and its section ids. Two parses
- * with the same shape resolve to the same include edges, so a write that keeps
- * a document's shape cannot change any include graph it is part of.
- * @param parsed The parsed document.
- * @returns The shape.
- */
-export function includeShape(parsed: ParsedDoc): string {
-  const refs: string[] = [];
-  for (const ref of parsed.refs) {
-    if (ref.kind === "include") refs.push(`${ref.docId}#${ref.sectionId ?? ""}`);
-  }
-  return JSON.stringify([refs, sectionsOf(parsed).map((s) => s.sectionId)]);
 }

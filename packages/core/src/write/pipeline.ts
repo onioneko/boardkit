@@ -4,7 +4,6 @@ import type { AnyBlockType } from "../blocks/types.js";
 import { diffDocs } from "../diff/diff.js";
 import { synthesizeEvents } from "../diff/synthesize.js";
 import { docVersion } from "../engine/version.js";
-import { includeShape } from "../link/graph.js";
 import {
   compose,
   type WriteCtx,
@@ -183,7 +182,7 @@ export interface PipelineDeps {
   /**
    * Called once per commit, right after the bytes land and before any event
    * is appended, with what the commit did. The engine seeds its parse cache
-   * from it and updates its include index. It must not throw.
+   * from it and invalidates its include index. It must not throw.
    */
   readonly onCommit?: (commit: CommitEffect) => void;
 }
@@ -196,28 +195,8 @@ export interface CommitEffect {
   readonly src: string | undefined;
   /** The content hash of `src`; `undefined` after a removal. */
   readonly version: string | undefined;
-  /**
-   * The content hash of the source the commit replaced, as read inside the
-   * lock; `undefined` when the document did not exist (a create or an
-   * import). The engine compares it with the version it last knew: when they
-   * differ, the document changed outside the engine first, and the commit
-   * counts as changing its shape whatever `shapeChanged` says.
-   */
-  readonly replacedVersion: string | undefined;
   /** The pipeline's parse of `src`, when it made one. */
   readonly parsed?: ParsedDoc;
-  /**
-   * False only when the commit provably kept the document's include
-   * references and section ids (see `includeShape`), so no include graph can
-   * have changed. True whenever that is not known.
-   */
-  readonly shapeChanged: boolean;
-}
-
-/** Whether a commit may have changed a document's include shape (true unless both parses agree). */
-function shapeChanged(before: ParsedDoc | undefined, after: ParsedDoc | undefined): boolean {
-  if (before === undefined || after === undefined) return true;
-  return includeShape(before) !== includeShape(after);
 }
 
 /**
@@ -558,9 +537,8 @@ export async function writeDoc(
           diagnostic("E_DOC_MISSING", `document not found: ${docId}`),
         ]);
       }
-      const currentVersion = docVersion(current);
-      if (decideFullText(currentVersion, guards) === "reject") {
-        return rejection("stale-version", [], currentVersion);
+      if (decideFullText(docVersion(current), guards) === "reject") {
+        return rejection("stale-version", [], docVersion(current));
       }
       const overLimit = parseLimitRejection(deps, docId, text, "write");
       if (overLimit !== undefined) return overLimit;
@@ -578,9 +556,7 @@ export async function writeDoc(
         docId,
         src: validated.src,
         version,
-        replacedVersion: currentVersion,
         ...(after !== undefined ? { parsed: after } : {}),
-        shapeChanged: shapeChanged(before, after),
       });
       const drafts = draftsFor(deps, docId, before, after, writer);
       const { records, appended } = await emit(deps, docId, version, drafts);
@@ -761,9 +737,7 @@ export async function patchDoc(
         docId,
         src,
         version,
-        replacedVersion: currentVersion,
         ...(after !== undefined ? { parsed: after } : {}),
-        shapeChanged: shapeChanged(currentParsed, after),
       });
       const drafts = draftsFor(deps, docId, currentParsed, after, writer);
       const { records, appended } = await emit(deps, docId, version, drafts);
@@ -825,9 +799,7 @@ export async function createDoc(
         docId,
         src: validated.src,
         version,
-        replacedVersion: undefined,
         ...(after !== undefined ? { parsed: after } : {}),
-        shapeChanged: true,
       });
       const { records, appended } = await emit(deps, docId, version, [
         { t: deps.clock(), type: "doc.created", docId, by: writer },
@@ -915,8 +887,6 @@ export async function importDoc(
         docId,
         src: content,
         version,
-        replacedVersion: undefined,
-        shapeChanged: true,
       });
       const { records, appended } = await emit(deps, docId, version, [
         { t: deps.clock(), type: "doc.created", docId, by: writer, imported: true },
@@ -968,8 +938,6 @@ export async function removeDoc(
         docId,
         src: undefined,
         version: undefined,
-        replacedVersion: version,
-        shapeChanged: true,
       });
       const { records, appended } = await emit(deps, docId, version, [
         { t: deps.clock(), type: "doc.removed", docId, by: writer },
