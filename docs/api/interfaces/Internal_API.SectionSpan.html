@@ -16,7 +16,7 @@
 </div></section>
 <div class="tsd-signature"><span class="tsd-signature-keyword">interface</span> <span class="tsd-kind-interface">SectionSpan</span> <span class="tsd-signature-symbol">{</span><br/>    <a class="tsd-kind-property" href="#content">content</a><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#contentspans">contentSpans</a><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-keyword">readonly</span> <a href="Consumer_API.SourceSpan.html" class="tsd-signature-type tsd-kind-interface">SourceSpan</a><span class="tsd-signature-symbol">[]</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#endoffset">endOffset</a><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">number</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#heading">heading</a><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#headingstart">headingStart</a><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">number</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#level">level</a><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">1</span> <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">2</span> <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">3</span> <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">4</span> <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">5</span> <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">6</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#position">position</a><span class="tsd-signature-symbol">?:</span> <a href="Consumer_API.SourcePosition.html" class="tsd-signature-type tsd-kind-interface">SourcePosition</a><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#sectionid">sectionId</a><span class="tsd-signature-symbol">:</span> <a href="../types/Consumer_API.SectionId.html" class="tsd-signature-type tsd-kind-type-alias">SectionId</a><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#startoffset">startOffset</a><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">number</span><span class="tsd-signature-symbol">;</span><br/><span class="tsd-signature-symbol">}</span></div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/f5572653a3364d62cc831110c6740fcb46e67d39/packages/core/src/parse/sections.ts#L33">packages/core/src/parse/sections.ts:33</a></li></ul></aside>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/parse/sections.ts#L33">packages/core/src/parse/sections.ts:33</a></li></ul></aside>
 <section class="tsd-panel-group tsd-index-group">
 <section class="tsd-panel tsd-index-panel">
 <details class="tsd-index-content tsd-accordion" open><summary class="tsd-accordion-summary tsd-index-summary"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><use href="../assets/icons.svg#icon-chevronDown"></use></svg>
@@ -41,7 +41,7 @@
 <h3 class="tsd-anchor-link" id="content"><code class="tsd-tag">Readonly</code><span>content</span><a href="#content" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">content</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">string</span></div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/f5572653a3364d62cc831110c6740fcb46e67d39/packages/core/src/parse/sections.ts#L43">packages/core/src/parse/sections.ts:43</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/parse/sections.ts#L43">packages/core/src/parse/sections.ts:43</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="contentspans"><code class="tsd-tag">Readonly</code><span>content<wbr/>Spans</span><a href="#contentspans" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">contentSpans</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-keyword">readonly</span> <a href="Consumer_API.SourceSpan.html" class="tsd-signature-type tsd-kind-interface">SourceSpan</a><span class="tsd-signature-symbol">[]</span></div>
@@ -50,46 +50,46 @@ concatenate to <code>content</code>. Unlike <code>[startOffset, endOffset)</code
 nested sections, so a parent's spans never overlap a child's.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/f5572653a3364d62cc831110c6740fcb46e67d39/packages/core/src/parse/sections.ts#L49">packages/core/src/parse/sections.ts:49</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/parse/sections.ts#L49">packages/core/src/parse/sections.ts:49</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="endoffset"><code class="tsd-tag">Readonly</code><span>end<wbr/>Offset</span><a href="#endoffset" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">endOffset</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">number</span></div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/f5572653a3364d62cc831110c6740fcb46e67d39/packages/core/src/parse/sections.ts#L42">packages/core/src/parse/sections.ts:42</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/parse/sections.ts#L42">packages/core/src/parse/sections.ts:42</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="heading"><code class="tsd-tag">Readonly</code><span>heading</span><a href="#heading" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">heading</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">string</span></div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/f5572653a3364d62cc831110c6740fcb46e67d39/packages/core/src/parse/sections.ts#L35">packages/core/src/parse/sections.ts:35</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/parse/sections.ts#L35">packages/core/src/parse/sections.ts:35</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="headingstart"><code class="tsd-tag">Readonly</code><span>heading<wbr/>Start</span><a href="#headingstart" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">headingStart</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">number</span></div>
 <div class="tsd-comment tsd-typography"><p>Offset of the heading line start (used to exclude nested sections from parents).</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/f5572653a3364d62cc831110c6740fcb46e67d39/packages/core/src/parse/sections.ts#L39">packages/core/src/parse/sections.ts:39</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/parse/sections.ts#L39">packages/core/src/parse/sections.ts:39</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="level"><code class="tsd-tag">Readonly</code><span>level</span><a href="#level" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">level</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">1</span> <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">2</span> <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">3</span> <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">4</span> <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">5</span> <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">6</span></div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/f5572653a3364d62cc831110c6740fcb46e67d39/packages/core/src/parse/sections.ts#L36">packages/core/src/parse/sections.ts:36</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/parse/sections.ts#L36">packages/core/src/parse/sections.ts:36</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="position"><code class="tsd-tag">Optional</code> <code class="tsd-tag">Readonly</code><span>position</span><a href="#position" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">position</span><span class="tsd-signature-symbol">?:</span> <a href="Consumer_API.SourcePosition.html" class="tsd-signature-type tsd-kind-interface">SourcePosition</a></div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/f5572653a3364d62cc831110c6740fcb46e67d39/packages/core/src/parse/sections.ts#L37">packages/core/src/parse/sections.ts:37</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/parse/sections.ts#L37">packages/core/src/parse/sections.ts:37</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="sectionid"><code class="tsd-tag">Readonly</code><span>section<wbr/>Id</span><a href="#sectionid" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">sectionId</span><span class="tsd-signature-symbol">:</span> <a href="../types/Consumer_API.SectionId.html" class="tsd-signature-type tsd-kind-type-alias">SectionId</a></div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/f5572653a3364d62cc831110c6740fcb46e67d39/packages/core/src/parse/sections.ts#L34">packages/core/src/parse/sections.ts:34</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/parse/sections.ts#L34">packages/core/src/parse/sections.ts:34</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="startoffset"><code class="tsd-tag">Readonly</code><span>start<wbr/>Offset</span><a href="#startoffset" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">startOffset</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">number</span></div>
 <div class="tsd-comment tsd-typography"><p>Offset where the section's own content begins (heading line end).</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/f5572653a3364d62cc831110c6740fcb46e67d39/packages/core/src/parse/sections.ts#L41">packages/core/src/parse/sections.ts:41</a></li></ul></aside></section></section></details></div>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/parse/sections.ts#L41">packages/core/src/parse/sections.ts:41</a></li></ul></aside></section></section></details></div>
 <div class="col-sidebar">
 <div class="page-menu">
 <div class="tsd-navigation settings">

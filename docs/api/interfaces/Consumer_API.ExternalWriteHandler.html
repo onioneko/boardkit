@@ -16,7 +16,7 @@
 </div></section>
 <div class="tsd-signature"><span class="tsd-signature-keyword">interface</span> <span class="tsd-kind-interface">ExternalWriteHandler</span> <span class="tsd-signature-symbol">{</span><br/>    <a class="tsd-kind-call-signature" href="#handle-1">handle</a><span class="tsd-signature-symbol">(</span><span class="tsd-kind-parameter">watchPath</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">)</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">Promise</span><span class="tsd-signature-symbol">&lt;</span><a href="Consumer_API.ExternalWriteOutcome.html" class="tsd-signature-type tsd-kind-interface">ExternalWriteOutcome</a> <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">undefined</span><span class="tsd-signature-symbol">&gt;</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-call-signature" href="#recordcommitted-1">recordCommitted</a><span class="tsd-signature-symbol">(</span><span class="tsd-kind-parameter">docId</span><span class="tsd-signature-symbol">:</span> <a href="../types/Consumer_API.DocId.html" class="tsd-signature-type tsd-kind-type-alias">DocId</a><span class="tsd-signature-symbol">,</span> <span class="tsd-kind-parameter">src</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">)</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">void</span><span class="tsd-signature-symbol">;</span><br/><span class="tsd-signature-symbol">}</span></div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/f5572653a3364d62cc831110c6740fcb46e67d39/packages/core/src/watch/external-write.ts#L66">packages/core/src/watch/external-write.ts:66</a></li></ul></aside>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/watch/external-write.ts#L80">packages/core/src/watch/external-write.ts:80</a></li></ul></aside>
 <section class="tsd-panel-group tsd-index-group">
 <section class="tsd-panel tsd-index-panel">
 <details class="tsd-index-content tsd-accordion" open><summary class="tsd-accordion-summary tsd-index-summary"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><use href="../assets/icons.svg#icon-chevronDown"></use></svg>
@@ -47,7 +47,7 @@
 <h4 class="tsd-returns-title">Returns <span class="tsd-signature-type">Promise</span><span class="tsd-signature-symbol">&lt;</span><a href="Consumer_API.ExternalWriteOutcome.html" class="tsd-signature-type tsd-kind-interface">ExternalWriteOutcome</a> <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">undefined</span><span class="tsd-signature-symbol">&gt;</span></h4><p>The outcome, or <code>undefined</code> when the path is outside <code>rootDir</code> or not a markdown file.</p>
 <aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/f5572653a3364d62cc831110c6740fcb46e67d39/packages/core/src/watch/external-write.ts#L83">packages/core/src/watch/external-write.ts:83</a></li></ul></aside></div></li></ul></section>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/watch/external-write.ts#L97">packages/core/src/watch/external-write.ts:97</a></li></ul></aside></div></li></ul></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="recordcommitted"><span>record<wbr/>Committed</span><a href="#recordcommitted" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <ul class="tsd-signatures">
@@ -72,7 +72,7 @@ and event the engine's own commit as an external write.</p>
 </div></li></ul></div>
 <h4 class="tsd-returns-title">Returns <span class="tsd-signature-type">void</span></h4><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/f5572653a3364d62cc831110c6740fcb46e67d39/packages/core/src/watch/external-write.ts#L77">packages/core/src/watch/external-write.ts:77</a></li></ul></aside></div></li></ul></section></section></details></div>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/watch/external-write.ts#L91">packages/core/src/watch/external-write.ts:91</a></li></ul></aside></div></li></ul></section></section></details></div>
 <div class="col-sidebar">
 <div class="page-menu">
 <div class="tsd-navigation settings">

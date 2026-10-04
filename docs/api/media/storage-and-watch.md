@@ -108,8 +108,9 @@ Two things make external-write handling safe:
 
 An external edit that leaves the file over the engine's document size limit (`maxDocumentBytes`,
 256 KiB by default) is the one exception to diffing: the file is not parsed, so it is not evented,
-and the outcome carries an `E_DOCUMENT_TOO_LARGE` diagnostic. The next edit that fits is diffed
-against the last version the engine parsed (see
+and the outcome carries an `E_DOCUMENT_TOO_LARGE` diagnostic. The same goes for a file over a
+complexity limit (`E_DOCUMENT_TOO_COMPLEX`) or one whose parse throws (`E_PARSE_FAILED`). The next
+edit that fits is diffed against the last version the engine parsed (see
 [Document size limit](projections.md#document-size-limit)).
 
 ## `engine.close()`

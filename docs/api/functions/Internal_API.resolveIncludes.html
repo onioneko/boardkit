@@ -19,7 +19,10 @@
 <div class="tsd-comment tsd-typography"><p>Resolve the include graph rooted at a board document: loads reachable docs,
 checks include targets, detects cycles, dedupes repeated <code>doc#section</code>
 references, and reports everything through diagnostics (fail-soft, never
-throws for content errors).</p>
+throws for content errors). A document whose parse throws is reported with
+an <code>E_PARSE_FAILED</code> diagnostic: as the board it contributes no documents or
+edges, and as an include target its edge is <code>missing-doc</code>. A read error on
+the board itself (other than a path outside the workspace) is rethrown.</p>
 </div>
 <div class="tsd-parameters">
 <h4 class="tsd-parameters-title">Parameters</h4>
@@ -39,7 +42,7 @@ throws for content errors).</p>
 <h4 class="tsd-returns-title">Returns <span class="tsd-signature-type">Promise</span><span class="tsd-signature-symbol">&lt;</span><a href="../interfaces/Internal_API.LinkResult.html" class="tsd-signature-type tsd-kind-interface">LinkResult</a><span class="tsd-signature-symbol">&gt;</span></h4><p>The reachable docs, resolved edges, and diagnostics.</p>
 <aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/f5572653a3364d62cc831110c6740fcb46e67d39/packages/core/src/link/graph.ts#L101">packages/core/src/link/graph.ts:101</a></li></ul></aside></div></li></ul></section></div>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/link/graph.ts#L118">packages/core/src/link/graph.ts:118</a></li></ul></aside></div></li></ul></section></div>
 <div class="col-sidebar">
 <div class="page-menu">
 <div class="tsd-navigation settings">

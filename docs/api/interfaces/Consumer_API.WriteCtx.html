@@ -16,7 +16,7 @@
 </div></section>
 <div class="tsd-signature"><span class="tsd-signature-keyword">interface</span> <span class="tsd-kind-interface">WriteCtx</span> <span class="tsd-signature-symbol">{</span><br/>    <a class="tsd-kind-property" href="#docid">docId</a><span class="tsd-signature-symbol">:</span> <a href="../types/Consumer_API.DocId.html" class="tsd-signature-type tsd-kind-type-alias">DocId</a><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#mode">mode</a><span class="tsd-signature-symbol">:</span> <a href="../types/Consumer_API.WriteMode.html" class="tsd-signature-type tsd-kind-type-alias">WriteMode</a><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#proposed">proposed</a><span class="tsd-signature-symbol">:</span> <a href="../types/Consumer_API.WriteProposal.html" class="tsd-signature-type tsd-kind-type-alias">WriteProposal</a><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#result">result</a><span class="tsd-signature-symbol">?:</span> <a href="../types/Consumer_API.WriteResult.html" class="tsd-signature-type tsd-kind-type-alias">WriteResult</a><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#writer">writer</a><span class="tsd-signature-symbol">:</span> <a href="Consumer_API.Writer.html" class="tsd-signature-type tsd-kind-interface">Writer</a><span class="tsd-signature-symbol">;</span><br/><span class="tsd-signature-symbol">}</span></div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/f5572653a3364d62cc831110c6740fcb46e67d39/packages/core/src/middleware/compose.ts#L48">packages/core/src/middleware/compose.ts:48</a></li></ul></aside>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/middleware/compose.ts#L48">packages/core/src/middleware/compose.ts:48</a></li></ul></aside>
 <section class="tsd-panel-group tsd-index-group">
 <section class="tsd-panel tsd-index-panel">
 <details class="tsd-index-content tsd-accordion" open><summary class="tsd-accordion-summary tsd-index-summary"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><use href="../assets/icons.svg#icon-chevronDown"></use></svg>
@@ -39,14 +39,14 @@
 <div class="tsd-comment tsd-typography"><p>The document being written.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/f5572653a3364d62cc831110c6740fcb46e67d39/packages/core/src/middleware/compose.ts#L50">packages/core/src/middleware/compose.ts:50</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/middleware/compose.ts#L50">packages/core/src/middleware/compose.ts:50</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="mode"><code class="tsd-tag">Readonly</code><span>mode</span><a href="#mode" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">mode</span><span class="tsd-signature-symbol">:</span> <a href="../types/Consumer_API.WriteMode.html" class="tsd-signature-type tsd-kind-type-alias">WriteMode</a></div>
 <div class="tsd-comment tsd-typography"><p>Which write mode is running (<code>full</code>, <code>patch</code>, <code>create</code>, or <code>remove</code>).</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/f5572653a3364d62cc831110c6740fcb46e67d39/packages/core/src/middleware/compose.ts#L54">packages/core/src/middleware/compose.ts:54</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/middleware/compose.ts#L54">packages/core/src/middleware/compose.ts:54</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="proposed"><span>proposed</span><a href="#proposed" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">proposed</span><span class="tsd-signature-symbol">:</span> <a href="../types/Consumer_API.WriteProposal.html" class="tsd-signature-type tsd-kind-type-alias">WriteProposal</a></div>
@@ -58,21 +58,21 @@ create it is <code>{ content }</code> (the initial source text); for a remove it
 intent's <code>params</code> re-decodes and re-validates the patch inside the lock.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/f5572653a3364d62cc831110c6740fcb46e67d39/packages/core/src/middleware/compose.ts#L63">packages/core/src/middleware/compose.ts:63</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/middleware/compose.ts#L63">packages/core/src/middleware/compose.ts:63</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="result"><code class="tsd-tag">Optional</code><span>result</span><a href="#result" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">result</span><span class="tsd-signature-symbol">?:</span> <a href="../types/Consumer_API.WriteResult.html" class="tsd-signature-type tsd-kind-type-alias">WriteResult</a></div>
 <div class="tsd-comment tsd-typography"><p>Populated by the pipeline after <code>next()</code>.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/f5572653a3364d62cc831110c6740fcb46e67d39/packages/core/src/middleware/compose.ts#L65">packages/core/src/middleware/compose.ts:65</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/middleware/compose.ts#L65">packages/core/src/middleware/compose.ts:65</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="writer"><code class="tsd-tag">Readonly</code><span>writer</span><a href="#writer" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">writer</span><span class="tsd-signature-symbol">:</span> <a href="Consumer_API.Writer.html" class="tsd-signature-type tsd-kind-interface">Writer</a></div>
 <div class="tsd-comment tsd-typography"><p>The write's author.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/f5572653a3364d62cc831110c6740fcb46e67d39/packages/core/src/middleware/compose.ts#L52">packages/core/src/middleware/compose.ts:52</a></li></ul></aside></section></section></details></div>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/middleware/compose.ts#L52">packages/core/src/middleware/compose.ts:52</a></li></ul></aside></section></section></details></div>
 <div class="col-sidebar">
 <div class="page-menu">
 <div class="tsd-navigation settings">
