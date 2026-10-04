@@ -16,7 +16,7 @@
 </div></section>
 <div class="tsd-signature"><span class="tsd-signature-keyword">interface</span> <span class="tsd-kind-interface">WritePolicy</span> <span class="tsd-signature-symbol">{</span><br/>    <a class="tsd-kind-call-signature" href="#canwrite-1">canWrite</a><span class="tsd-signature-symbol">?</span><span class="tsd-signature-symbol">(</span><span class="tsd-kind-parameter">writer</span><span class="tsd-signature-symbol">:</span> <a href="Consumer_API.Writer.html" class="tsd-signature-type tsd-kind-interface">Writer</a><span class="tsd-signature-symbol">,</span> <span class="tsd-kind-parameter">docId</span><span class="tsd-signature-symbol">:</span> <a href="../types/Consumer_API.DocId.html" class="tsd-signature-type tsd-kind-type-alias">DocId</a><span class="tsd-signature-symbol">,</span> <span class="tsd-kind-parameter">mode</span><span class="tsd-signature-symbol">:</span> <a href="../types/Consumer_API.WriteMode.html" class="tsd-signature-type tsd-kind-type-alias">WriteMode</a><span class="tsd-signature-symbol">)</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">boolean</span><span class="tsd-signature-symbol">;</span><br/><span class="tsd-signature-symbol">}</span></div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/write/pipeline.ts#L87">packages/core/src/write/pipeline.ts:87</a></li></ul></aside>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/write/pipeline.ts#L92">packages/core/src/write/pipeline.ts:92</a></li></ul></aside>
 <section class="tsd-panel-group tsd-index-group">
 <section class="tsd-panel tsd-index-panel">
 <details class="tsd-index-content tsd-accordion" open><summary class="tsd-accordion-summary tsd-index-summary"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><use href="../assets/icons.svg#icon-chevronDown"></use></svg>
@@ -48,12 +48,13 @@
 </div></li>
 <li><span><span class="tsd-kind-parameter">mode</span>: <a href="../types/Consumer_API.WriteMode.html" class="tsd-signature-type tsd-kind-type-alias">WriteMode</a></span>
 <div class="tsd-comment tsd-typography"><p>The write mode: <code>full</code> (replace), <code>patch</code> (attrs delta),
-<code>create</code> (new document), or <code>remove</code> (delete document).</p>
+<code>create</code> (new document), <code>remove</code> (delete document), or <code>import</code> (new
+document stored verbatim, see <a href="../functions/Internal_API.importDoc.html" class="tsd-kind-function">importDoc</a>).</p>
 </div></li></ul></div>
 <h4 class="tsd-returns-title">Returns <span class="tsd-signature-type">boolean</span></h4><p><code>true</code> to allow; <code>false</code> rejects the write with a write-domain diagnostic.</p>
 <aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/write/pipeline.ts#L96">packages/core/src/write/pipeline.ts:96</a></li></ul></aside></div></li></ul></section></section></details></div>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/write/pipeline.ts#L102">packages/core/src/write/pipeline.ts:102</a></li></ul></aside></div></li></ul></section></section></details></div>
 <div class="col-sidebar">
 <div class="page-menu">
 <div class="tsd-navigation settings">

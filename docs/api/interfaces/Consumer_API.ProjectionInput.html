@@ -16,7 +16,7 @@
 </div></section>
 <div class="tsd-signature"><span class="tsd-signature-keyword">interface</span> <span class="tsd-kind-interface">ProjectionInput</span> <span class="tsd-signature-symbol">{</span><br/>    <a class="tsd-kind-property" href="#blocktypes">blockTypes</a><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">ReadonlyMap</span><span class="tsd-signature-symbol">&lt;</span><span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">,</span> <a href="../types/Consumer_API.AnyBlockType.html" class="tsd-signature-type tsd-kind-type-alias">AnyBlockType</a><span class="tsd-signature-symbol">&gt;</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#doc">doc</a><span class="tsd-signature-symbol">:</span> <a href="Consumer_API.ParsedDoc.html" class="tsd-signature-type tsd-kind-interface">ParsedDoc</a><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#merged">merged</a><span class="tsd-signature-symbol">?:</span> <a href="Consumer_API.MergedTree.html" class="tsd-signature-type tsd-kind-interface">MergedTree</a><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#options">options</a><span class="tsd-signature-symbol">:</span> <a href="../types/Consumer_API.ProjectionOptions.html" class="tsd-signature-type tsd-kind-type-alias">ProjectionOptions</a><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#report">report</a><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-symbol">(</span><span class="tsd-kind-parameter">diagnostic</span><span class="tsd-signature-symbol">:</span> <a href="Consumer_API.Diagnostic.html" class="tsd-signature-type tsd-kind-interface">Diagnostic</a><span class="tsd-signature-symbol">)</span> <span class="tsd-signature-symbol">=&gt;</span> <span class="tsd-signature-type">void</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#src">src</a><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#values">values</a><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">ReadonlyMap</span><span class="tsd-signature-symbol">&lt;</span><span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">,</span> <a href="Consumer_API.SourceValue.html" class="tsd-signature-type tsd-kind-interface">SourceValue</a><span class="tsd-signature-symbol">&gt;</span><span class="tsd-signature-symbol">;</span><br/><span class="tsd-signature-symbol">}</span></div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/engine/engine.ts#L84">packages/core/src/engine/engine.ts:84</a></li></ul></aside>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/engine/engine.ts#L88">packages/core/src/engine/engine.ts:88</a></li></ul></aside>
 <section class="tsd-panel-group tsd-index-group">
 <section class="tsd-panel tsd-index-panel">
 <details class="tsd-index-content tsd-accordion" open><summary class="tsd-accordion-summary tsd-index-summary"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><use href="../assets/icons.svg#icon-chevronDown"></use></svg>
@@ -41,28 +41,28 @@
 <div class="tsd-comment tsd-typography"><p>Registered block types, keyed by type name.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/engine/engine.ts#L94">packages/core/src/engine/engine.ts:94</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/engine/engine.ts#L98">packages/core/src/engine/engine.ts:98</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="doc"><code class="tsd-tag">Readonly</code><span>doc</span><a href="#doc" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">doc</span><span class="tsd-signature-symbol">:</span> <a href="Consumer_API.ParsedDoc.html" class="tsd-signature-type tsd-kind-interface">ParsedDoc</a></div>
 <div class="tsd-comment tsd-typography"><p>The parsed document being projected.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/engine/engine.ts#L86">packages/core/src/engine/engine.ts:86</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/engine/engine.ts#L90">packages/core/src/engine/engine.ts:90</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="merged"><code class="tsd-tag">Optional</code> <code class="tsd-tag">Readonly</code><span>merged</span><a href="#merged" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">merged</span><span class="tsd-signature-symbol">?:</span> <a href="Consumer_API.MergedTree.html" class="tsd-signature-type tsd-kind-interface">MergedTree</a></div>
 <div class="tsd-comment tsd-typography"><p>The merged include tree (set by the engine's MERGE stage); expands includes when present.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/engine/engine.ts#L92">packages/core/src/engine/engine.ts:92</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/engine/engine.ts#L96">packages/core/src/engine/engine.ts:96</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="options"><code class="tsd-tag">Readonly</code><span>options</span><a href="#options" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">options</span><span class="tsd-signature-symbol">:</span> <a href="../types/Consumer_API.ProjectionOptions.html" class="tsd-signature-type tsd-kind-type-alias">ProjectionOptions</a></div>
 <div class="tsd-comment tsd-typography"><p>Projection options (the engine's own plus any the caller supplied).</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/engine/engine.ts#L96">packages/core/src/engine/engine.ts:96</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/engine/engine.ts#L100">packages/core/src/engine/engine.ts:100</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="report"><code class="tsd-tag">Optional</code> <code class="tsd-tag">Readonly</code><span>report</span><a href="#report" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">report</span><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-symbol">(</span><span class="tsd-kind-parameter">diagnostic</span><span class="tsd-signature-symbol">:</span> <a href="Consumer_API.Diagnostic.html" class="tsd-signature-type tsd-kind-interface">Diagnostic</a><span class="tsd-signature-symbol">)</span> <span class="tsd-signature-symbol">=&gt;</span> <span class="tsd-signature-type">void</span></div>
@@ -73,21 +73,21 @@ every reported diagnostic to the projection result; a host calling a
 projector directly may leave it out.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/engine/engine.ts#L104">packages/core/src/engine/engine.ts:104</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/engine/engine.ts#L108">packages/core/src/engine/engine.ts:108</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="src"><code class="tsd-tag">Readonly</code><span>src</span><a href="#src" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">src</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">string</span></div>
 <div class="tsd-comment tsd-typography"><p>The document's raw source.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/engine/engine.ts#L88">packages/core/src/engine/engine.ts:88</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/engine/engine.ts#L92">packages/core/src/engine/engine.ts:92</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="values"><code class="tsd-tag">Readonly</code><span>values</span><a href="#values" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">values</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">ReadonlyMap</span><span class="tsd-signature-symbol">&lt;</span><span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">,</span> <a href="Consumer_API.SourceValue.html" class="tsd-signature-type tsd-kind-interface">SourceValue</a><span class="tsd-signature-symbol">&gt;</span></div>
 <div class="tsd-comment tsd-typography"><p>Resolved live values, keyed by canonical key.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/engine/engine.ts#L90">packages/core/src/engine/engine.ts:90</a></li></ul></aside></section></section></details></div>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/engine/engine.ts#L94">packages/core/src/engine/engine.ts:94</a></li></ul></aside></section></section></details></div>
 <div class="col-sidebar">
 <div class="page-menu">
 <div class="tsd-navigation settings">

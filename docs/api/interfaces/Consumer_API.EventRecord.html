@@ -14,7 +14,7 @@
 <section class="tsd-panel tsd-comment">
 <div class="tsd-comment tsd-typography"><p>An append-only event record; <code>seq</code> is assigned monotonically by the sink.</p>
 </div></section>
-<div class="tsd-signature"><span class="tsd-signature-keyword">interface</span> <span class="tsd-kind-interface">EventRecord</span> <span class="tsd-signature-symbol">{</span><br/>    <a class="tsd-kind-property" href="#seq">seq</a><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">number</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#t">t</a><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#type">type</a><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">;</span><br/>    <span class="tsd-signature-keyword">readonly</span> <span class="tsd-signature-symbol">[</span><span class="tsd-kind-index-signature">key</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">]:</span> <span class="tsd-signature-type">unknown</span><span class="tsd-signature-symbol">;</span><br/><span class="tsd-signature-symbol">}</span></div>
+<div class="tsd-signature"><span class="tsd-signature-keyword">interface</span> <span class="tsd-kind-interface">EventRecord</span> <span class="tsd-signature-symbol">{</span><br/>    <a class="tsd-kind-property" href="#commit">commit</a><span class="tsd-signature-symbol">?:</span> <a href="Consumer_API.CommitInfo.html" class="tsd-signature-type tsd-kind-interface">CommitInfo</a><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#seq">seq</a><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">number</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#t">t</a><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#type">type</a><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">;</span><br/>    <span class="tsd-signature-keyword">readonly</span> <span class="tsd-signature-symbol">[</span><span class="tsd-kind-index-signature">key</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">]:</span> <span class="tsd-signature-type">unknown</span><span class="tsd-signature-symbol">;</span><br/><span class="tsd-signature-symbol">}</span></div>
 <section class="tsd-panel">
 <h4 class="tsd-before-signature">Indexable</h4>
 <ul class="tsd-signatures">
@@ -23,7 +23,7 @@
 <div class="tsd-comment tsd-typography"><p>Type-specific payload fields (docId, blockId, from/to, …), carried on the top level.</p>
 </div></li></ul></section><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/ports/ports.ts#L64">packages/core/src/ports/ports.ts:64</a></li></ul></aside>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/ports/ports.ts#L107">packages/core/src/ports/ports.ts:107</a></li></ul></aside>
 <section class="tsd-panel-group tsd-index-group">
 <section class="tsd-panel tsd-index-panel">
 <details class="tsd-index-content tsd-accordion" open><summary class="tsd-accordion-summary tsd-index-summary"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><use href="../assets/icons.svg#icon-chevronDown"></use></svg>
@@ -31,7 +31,8 @@
 <div class="tsd-accordion-details">
 <section class="tsd-index-section">
 <h3 class="tsd-index-heading tsd-anchor-link" id="properties">Properties<a href="#properties" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
-<div class="tsd-index-list"><a href="#seq" class="tsd-index-link"><svg class="tsd-kind-icon" viewBox="0 0 24 24" aria-label="Property"><use href="../assets/icons.svg#icon-1024"></use></svg><span>seq</span></a>
+<div class="tsd-index-list"><a href="#commit" class="tsd-index-link"><svg class="tsd-kind-icon" viewBox="0 0 24 24" aria-label="Property"><use href="../assets/icons.svg#icon-1024"></use></svg><span>commit?</span></a>
+<a href="#seq" class="tsd-index-link"><svg class="tsd-kind-icon" viewBox="0 0 24 24" aria-label="Property"><use href="../assets/icons.svg#icon-1024"></use></svg><span>seq</span></a>
 <a href="#t" class="tsd-index-link"><svg class="tsd-kind-icon" viewBox="0 0 24 24" aria-label="Property"><use href="../assets/icons.svg#icon-1024"></use></svg><span>t</span></a>
 <a href="#type" class="tsd-index-link"><svg class="tsd-kind-icon" viewBox="0 0 24 24" aria-label="Property"><use href="../assets/icons.svg#icon-1024"></use></svg><span>type</span></a>
 </div></section></div></details></section></section>
@@ -39,26 +40,34 @@
 <h2 class="tsd-anchor-link" id="properties-1">Properties<a href="#properties-1" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h2></summary>
 <section>
 <section class="tsd-panel tsd-member">
+<h3 class="tsd-anchor-link" id="commit"><code class="tsd-tag">Optional</code> <code class="tsd-tag">Readonly</code><span>commit</span><a href="#commit" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<div class="tsd-signature"><span class="tsd-kind-property">commit</span><span class="tsd-signature-symbol">?:</span> <a href="Consumer_API.CommitInfo.html" class="tsd-signature-type tsd-kind-interface">CommitInfo</a></div>
+<div class="tsd-comment tsd-typography"><p>The commit this event belongs to. Every event the engine appends carries
+it; a record from an older log, or one a host appended by hand, may not.</p>
+</div><aside class="tsd-sources">
+<ul>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/ports/ports.ts#L118">packages/core/src/ports/ports.ts:118</a></li></ul></aside></section>
+<section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="seq"><code class="tsd-tag">Readonly</code><span>seq</span><a href="#seq" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">seq</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">number</span></div>
 <div class="tsd-comment tsd-typography"><p>Monotonic sequence number assigned by the sink at append time.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/ports/ports.ts#L66">packages/core/src/ports/ports.ts:66</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/ports/ports.ts#L109">packages/core/src/ports/ports.ts:109</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="t"><code class="tsd-tag">Readonly</code><span>t</span><a href="#t" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">t</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">string</span></div>
 <div class="tsd-comment tsd-typography"><p>Event timestamp from the engine's Clock.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/ports/ports.ts#L68">packages/core/src/ports/ports.ts:68</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/ports/ports.ts#L111">packages/core/src/ports/ports.ts:111</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="type"><code class="tsd-tag">Readonly</code><span>type</span><a href="#type" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">type</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">string</span></div>
 <div class="tsd-comment tsd-typography"><p>Event name, e.g. <code>&quot;status.changed&quot;</code>.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/ports/ports.ts#L70">packages/core/src/ports/ports.ts:70</a></li></ul></aside></section></section></details></div>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/ports/ports.ts#L113">packages/core/src/ports/ports.ts:113</a></li></ul></aside></section></section></details></div>
 <div class="col-sidebar">
 <div class="page-menu">
 <div class="tsd-navigation settings">
@@ -75,7 +84,7 @@
 <h3>On This Page</h3></summary>
 <div class="tsd-accordion-details">
 <details open class="tsd-accordion tsd-page-navigation-section"><summary class="tsd-accordion-summary" data-key="section-Properties"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><use href="../assets/icons.svg#icon-chevronDown"></use></svg>Properties</summary>
-<div><a href="#seq"><svg class="tsd-kind-icon" viewBox="0 0 24 24" aria-label="Property"><use href="../assets/icons.svg#icon-1024"></use></svg><span>seq</span></a><a href="#t"><svg class="tsd-kind-icon" viewBox="0 0 24 24" aria-label="Property"><use href="../assets/icons.svg#icon-1024"></use></svg><span>t</span></a><a href="#type"><svg class="tsd-kind-icon" viewBox="0 0 24 24" aria-label="Property"><use href="../assets/icons.svg#icon-1024"></use></svg><span>type</span></a></div></details></div></details></div>
+<div><a href="#commit"><svg class="tsd-kind-icon" viewBox="0 0 24 24" aria-label="Property"><use href="../assets/icons.svg#icon-1024"></use></svg><span>commit</span></a><a href="#seq"><svg class="tsd-kind-icon" viewBox="0 0 24 24" aria-label="Property"><use href="../assets/icons.svg#icon-1024"></use></svg><span>seq</span></a><a href="#t"><svg class="tsd-kind-icon" viewBox="0 0 24 24" aria-label="Property"><use href="../assets/icons.svg#icon-1024"></use></svg><span>t</span></a><a href="#type"><svg class="tsd-kind-icon" viewBox="0 0 24 24" aria-label="Property"><use href="../assets/icons.svg#icon-1024"></use></svg><span>type</span></a></div></details></div></details></div>
 <div class="site-menu">
 <nav class="tsd-navigation"><a href="../modules.html">boardkit - v0.0.0</a>
 <ul class="tsd-small-nested-navigation" id="tsd-nav-container">

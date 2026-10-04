@@ -26,8 +26,10 @@ const rejectRobots: WriteMiddleware = async (ctx, next) => {
 
 - **amend** — mutate `ctx.proposed` before `await next()`. The proposal is discriminated by
   `ctx.mode`: a full-text write is `{ fullText }`, a patch is `{ blockId, delta, affordance?,
-  params? }`, a create is `{ content }` (the initial source text), and a remove is `{}` (a
-  removal has nothing to amend — the target is `ctx.docId`).
+  params? }`, a create is `{ content }` (the initial source text), an import is `{ content }`
+  (the bytes `engine.importDoc` stores; read it, but an amended import is rejected with
+  `import-amended`), and a remove is `{}` (a removal has nothing to amend — the target is
+  `ctx.docId`).
 - **reject** — throw `WriteRejection` before `await next()`; the write fails with
   `{ ok: false, rejection: { reason, diagnostics } }`.
 - **observe** — read `ctx.result` after `await next()`.

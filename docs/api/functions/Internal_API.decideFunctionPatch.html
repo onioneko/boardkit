@@ -26,7 +26,9 @@ a concurrent change disjoint from those parts commutes (<code>rebased: true</cod
 one that overlaps them rejects. Comparison granularity: array attrs are
 compared per element (at the indices the delta changes); every other attr is
 compared as a whole value. A missing <code>expected</code> for a key the delta changes
-is treated as a mismatch (the client's view cannot be verified).</p>
+is treated as a mismatch (the client's view cannot be verified). Under
+strict value-CAS (the default) the same comparison runs first, whatever the
+version, so a current <code>expectedVersion</code> with a stale <code>expected</code> rejects.</p>
 </div>
 <div class="tsd-parameters">
 <h4 class="tsd-parameters-title">Parameters</h4>
@@ -41,12 +43,12 @@ is treated as a mismatch (the client's view cannot be verified).</p>
 <div class="tsd-comment tsd-typography"><p>The delta recomputed from <code>currentAttrs</code> (already a concrete object).</p>
 </div></li>
 <li><span><span class="tsd-kind-parameter">guards</span>: <a href="../interfaces/Consumer_API.PatchGuards.html" class="tsd-signature-type tsd-kind-interface">PatchGuards</a></span>
-<div class="tsd-comment tsd-typography"><p>The patch's <code>expectedVersion</code>/<code>expected</code> guards.</p>
+<div class="tsd-comment tsd-typography"><p>The patch's <code>expectedVersion</code>/<code>expected</code>/<code>strictExpected</code> guards.</p>
 </div></li></ul></div>
 <h4 class="tsd-returns-title">Returns <a href="../types/Internal_API.PatchDecision.html" class="tsd-signature-type tsd-kind-type-alias">PatchDecision</a></h4><p><code>apply</code> (with <code>rebased</code> when value-CAS matched after a version move) or <code>reject</code>.</p>
 <aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/write/concurrency.ts#L71">packages/core/src/write/concurrency.ts:71</a></li></ul></aside></div></li></ul></section></div>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/write/concurrency.ts#L97">packages/core/src/write/concurrency.ts:97</a></li></ul></aside></div></li></ul></section></div>
 <div class="col-sidebar">
 <div class="page-menu">
 <div class="tsd-navigation settings">
