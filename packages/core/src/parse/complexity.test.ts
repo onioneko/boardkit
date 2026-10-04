@@ -38,6 +38,7 @@ describe("documentComplexityDiagnostic", () => {
       maxIndentColumns: 160,
       maxBracketDepth: 32,
       maxDelimiterRun: 64,
+      maxEmphasisDepth: 64,
     });
     expect(Object.isFrozen(DEFAULT_COMPLEXITY_LIMITS)).toBe(true);
   });
@@ -143,6 +144,94 @@ describe("documentComplexityDiagnostic", () => {
     });
   });
 
+  describe("paragraph resets", () => {
+    it("does not reset on a line holding only a list or footnote marker", () => {
+      // An empty list item cannot interrupt a paragraph, so the brackets on both
+      // sides of it nest in one paragraph.
+      for (const marker of ["*", "+", "-", "1.", "2)", "[^a]:", "  *"]) {
+        const src = `${"[".repeat(20)}\n${marker}\n${"[".repeat(20)}x\n`;
+        expect({ marker, code: check(src)?.code }).toEqual({
+          marker,
+          code: "E_DOCUMENT_TOO_COMPLEX",
+        });
+      }
+    });
+
+    it("refuses the empty-list-item bracket bypass", () => {
+      const src = `${`${"[".repeat(30)}\n*\n`.repeat(300)}x${"](u)".repeat(9000)}\n`;
+      expect(check(src)?.message).toContain("maxBracketDepth");
+    });
+
+    it("still resets on a blank line or a line of only `>` markers", () => {
+      const para = `${"[".repeat(20)}x\n`;
+      expect(check(`${para}>\n${para}`)).toBeUndefined();
+      expect(check(`${para}> >  \n${para}`)).toBeUndefined();
+      expect(check(`${para} \t\n${para}`)).toBeUndefined();
+    });
+  });
+
+  describe("thematic break and fence lines", () => {
+    it("does not count a line of one delimiter character as a run", () => {
+      for (const ch of ["*", "_", "~", "-", "`"]) {
+        expect(check(`a\n\n${ch.repeat(80)}\n\nb\n`)).toBeUndefined();
+        expect(check(`${`${ch} `.repeat(20)}${ch.repeat(70)}  \n`)).toBeUndefined();
+      }
+      // A fence of 70 tildes around code.
+      expect(check(`${"~".repeat(70)}\ncode\n${"~".repeat(70)}\n`)).toBeUndefined();
+    });
+
+    it("still counts a run on a line with other content", () => {
+      expect(check(`${"_".repeat(80)} x\n`)?.code).toBe("E_DOCUMENT_TOO_COMPLEX");
+      expect(check(`${"~".repeat(70)}python\n`)?.code).toBe("E_DOCUMENT_TOO_COMPLEX");
+      expect(check(`${"*".repeat(40)}${"_".repeat(40)}\n`)).toBeUndefined();
+    });
+  });
+
+  describe("maxEmphasisDepth", () => {
+    it("accepts n unclosed openers in a paragraph and rejects n + 1", () => {
+      expect(check(`${"*a ".repeat(64)}\n`)).toBeUndefined();
+      const d = check(`${"*a ".repeat(65)}\n`);
+      expect(d?.code).toBe("E_DOCUMENT_TOO_COMPLEX");
+      expect(d?.message).toContain("maxEmphasisDepth");
+      // A run opens as many levels as it has characters.
+      expect(check(`${"**a ".repeat(32)}\n`)).toBeUndefined();
+      expect(check(`${"**a ".repeat(33)}\n`)?.code).toBe("E_DOCUMENT_TOO_COMPLEX");
+      expect(check(`${"~a ".repeat(65)}\n`)?.code).toBe("E_DOCUMENT_TOO_COMPLEX");
+    });
+
+    it("refuses deeply nested alternating emphasis", () => {
+      const src = `${"*a _b ".repeat(3000)}x${" b_ a*".repeat(3000)}\n`;
+      expect(check(src)?.message).toContain("maxEmphasisDepth");
+    });
+
+    it("lets closers lower the depth", () => {
+      expect(check(`${"*a* **b** _c_ ~d~ ".repeat(500)}\n`)).toBeUndefined();
+      expect(
+        check(`${"*a ".repeat(60)}x${" a*".repeat(60)} ${"*a ".repeat(60)}\n`),
+      ).toBeUndefined();
+      // A stray closer does not go below zero and so cannot bank depth.
+      expect(check(`${"a* ".repeat(100)}${"*a ".repeat(64)}\n`)).toBeUndefined();
+    });
+
+    it("does not count intraword underscores, both-flanking stars or escapes", () => {
+      expect(check(`${"snake_case_name ".repeat(200)}\n`)).toBeUndefined();
+      expect(check(`${"2*3*4 ".repeat(200)}\n`)).toBeUndefined();
+      expect(check(`${"\\*a ".repeat(200)}\n`)).toBeUndefined();
+      expect(check(`${"* a ".repeat(10)}${"a * b ".repeat(200)}\n`)).toBeUndefined();
+    });
+
+    it("counts openers after Unicode punctuation", () => {
+      // CommonMark treats Unicode punctuation like ASCII punctuation here.
+      expect(check(`${"「*a ".repeat(65)}\n`)?.code).toBe("E_DOCUMENT_TOO_COMPLEX");
+      expect(check(`${"「_a ".repeat(65)}\n`)?.code).toBe("E_DOCUMENT_TOO_COMPLEX");
+    });
+
+    it("tracks depth across the lines of a paragraph and resets at a blank line", () => {
+      expect(check(`${"*a\n".repeat(65)}`)?.code).toBe("E_DOCUMENT_TOO_COMPLEX");
+      expect(check(`${"*a ".repeat(40)}\n\n${"*a ".repeat(40)}\n`)).toBeUndefined();
+    });
+  });
+
   describe("maxDelimiterRun", () => {
     it("accepts a run of n and rejects n + 1, for each delimiter", () => {
       for (const ch of ["*", "_", "~"]) {
@@ -177,6 +266,7 @@ describe("documentComplexityDiagnostic", () => {
       maxIndentColumns: Infinity,
       maxBracketDepth: Infinity,
       maxDelimiterRun: Infinity,
+      maxEmphasisDepth: Infinity,
     };
     expect(
       check(`${">".repeat(8000)} ${"[".repeat(100)}${"*".repeat(100)}\n`, open),
@@ -203,7 +293,7 @@ describe("documentComplexityDiagnostic", () => {
     const size = 2 * 1024 * 1024;
     const fill = (unit: string): string => unit.repeat(Math.floor(size / unit.length));
     const prose = fill("lorem ipsum dolor sit amet\n");
-    const nested = fill(`${"> ".repeat(32)}*_~x [a]\n`);
+    const nested = fill(`${"> ".repeat(32)}*_~x~_* [a]\n`);
     const indented = fill(`${" ".repeat(150)}x\n`);
     const brackets = fill(`${"[".repeat(30)}${"]".repeat(30)}\n`);
     const delims = fill(`${"*".repeat(60)}a${"_".repeat(60)}\n`);
