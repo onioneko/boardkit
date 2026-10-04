@@ -838,7 +838,9 @@ export function createEngine(opts: EngineOptions): Engine {
    * here, so a document is parsed once per content and its cost is paid on the
    * first read after a write, not on every projection. Callers check the size
    * and complexity limits first: a document over one never reaches this
-   * function. A parse that throws anyway propagates, uncached; callers catch it.
+   * function. A parse that throws anyway propagates, and callers catch it; the
+   * cache remembers the failure by content hash, so an unparseable document
+   * that stays subscribed or keeps being read is not parsed again each time.
    */
   function parseCached(docId: DocId, src: string): ParsedDoc {
     const { doc, hash } = parseCache.parse(src);
