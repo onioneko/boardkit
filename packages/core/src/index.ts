@@ -29,6 +29,7 @@ export type {
 // Projection
 // ---------------------------------------------------------------------------
 export type {
+  DocInfo,
   Engine,
   EngineOptions,
   ProjectionInput,
