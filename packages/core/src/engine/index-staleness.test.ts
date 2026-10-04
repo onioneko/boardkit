@@ -236,3 +236,50 @@ describe("M1: a validate hook that changes the attrs it is given", () => {
     expect((await engine.getBlock("t", "t1"))?.attrs.name).toBe("low");
   });
 });
+
+describe("R1-1: a pass sees a document change between unloaded and loaded", () => {
+  it("a document created behind the engine's back, loaded by another subscriber's pass, re-resolves the first", async () => {
+    const storage = createMemStorage();
+    const { engine, seen } = watched(storage);
+    await storage.writeAtomic(asDocId("a"), "# A\n\n{{include:x}}\n");
+    await storage.writeAtomic(asDocId("b"), "# B\n\n{{include:x}}\n");
+    await storage.writeAtomic(asDocId("y"), "# Y\n");
+    engine.subscribe("a", (evt) => seen.push(`a:${String(evt.docId)}`));
+    engine.subscribe("b", (evt) => seen.push(`b:${String(evt.docId)}`));
+    await engine.write("y", { writer, fullText: "# Y\n\n1\n" }); // both read x as missing
+
+    // An editor creates x; the watch event is still pending.
+    await storage.writeAtomic(asDocId("x"), "# X\n\n{{include:y}}\n");
+    // b changes shape, so the next write re-resolves b alone, which loads x.
+    await engine.write("b", { writer, fullText: "# B\n\n{{include:x}}\n\n## more\n" });
+    await engine.write("y", { writer, fullText: "# Y\n\n2\n" });
+    // An agent writes x and keeps its shape; the late watch event is a self-echo.
+    await engine.write("x", { writer, fullText: "# X\n\n{{include:y}}\n\nagent\n" });
+    expect((await engine.externalWrite("/ws/x.md"))?.suppressed).toBe(true);
+
+    seen.length = 0;
+    await engine.write("y", { writer, fullText: "# Y\n\n3\n" });
+    expect(seen).toEqual(expect.arrayContaining(["a:y", "b:y"]));
+  });
+
+  it("a document removed behind the engine's back, seen unloaded by another pass, re-resolves the first", async () => {
+    const storage = createMemStorage();
+    const engine = createEngine({ storage, clock });
+    const seen: string[] = [];
+    await storage.writeAtomic(asDocId("a"), "# A\n\n{{include:x}}\n");
+    await storage.writeAtomic(asDocId("b"), "# B\n\n{{include:x}}\n");
+    await storage.writeAtomic(asDocId("x"), "# X\n\n{{include:y}}\n");
+    await storage.writeAtomic(asDocId("y"), "# Y\n");
+    engine.subscribe("a", (evt) => seen.push(`a:${String(evt.docId)}`));
+    engine.subscribe("b", (evt) => seen.push(`b:${String(evt.docId)}`));
+    await engine.write("y", { writer, fullText: "# Y\n\n1\n" }); // both read x → y
+
+    await storage.delete?.(asDocId("x")); // removed out of band, no watch
+    await engine.write("b", { writer, fullText: "# B\n\n{{include:x}}\n\n## more\n" });
+    await engine.write("y", { writer, fullText: "# Y\n\n2\n" }); // b's pass sees x missing
+
+    seen.length = 0;
+    await engine.write("y", { writer, fullText: "# Y\n\n3\n" });
+    expect(seen).toEqual([]);
+  });
+});

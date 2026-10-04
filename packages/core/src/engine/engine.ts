@@ -679,6 +679,12 @@ function resolveWatchTrue(storage: Storage): WatchOptions {
  * });
  * ```
  */
+/**
+ * The include index's state for a document that was read but not loaded.
+ * Not a content hash (those are 64 hex digits), so it never equals a version.
+ */
+const UNLOADED = "unloaded";
+
 export function createEngine(opts: EngineOptions): Engine {
   const clock = opts.clock ?? (() => new Date().toISOString());
   const projectors = new Map<string, Projector<unknown>>(
@@ -759,12 +765,19 @@ export function createEngine(opts: EngineOptions): Engine {
   /** Documents whose shape changed since the running rebuild started. */
   const changedDuringBuild = new Set<DocId>();
   /**
-   * The version of each document as the index last saw it: from a commit, or
-   * from a resolution pass that read it (`undefined`: known to be missing).
-   * Absent means not known. A commit that replaces some other version, or a
-   * pass that reads one, reveals a change made behind the engine's back.
+   * The state of each document as the index last saw it, from a commit or
+   * from a resolution pass that read it: its version, or {@link UNLOADED}
+   * when it was missing or could not be loaded (unreadable, over a limit,
+   * a parse that threw), which resolves the same way. Absent means not
+   * known. A commit that replaces some other state, or a pass that observes
+   * one, reveals a change made behind the engine's back.
    */
-  const knownVersion = new Map<DocId, string | undefined>();
+  const knownVersion = new Map<DocId, string>();
+  /** Record what a pass for `reader` observed of `docId`; a change re-resolves its other readers. */
+  function observe(docId: DocId, state: string, reader: DocId): void {
+    if (knownVersion.has(docId) && knownVersion.get(docId) !== state) markReaders(docId, reader);
+    knownVersion.set(docId, state);
+  }
 
   function invalidateReverseIndex(): void {
     reverseIndexGeneration += 1;
@@ -855,17 +868,21 @@ export function createEngine(opts: EngineOptions): Engine {
         // What this pass read: a version other than the one the index knew
         // means the document changed behind the engine's back, and the other
         // subscribers that read it saw the old content.
+        // Read but not loaded (missing, unreadable, over a limit) is a state
+        // of its own: a document moving between it and loaded changes edges.
         const loaded = new Set<DocId>();
         for (const d of resolved.docs) {
           loaded.add(d.docId);
-          const version = docVersion(d.src);
-          if (knownVersion.has(d.docId) && knownVersion.get(d.docId) !== version) {
-            markReaders(d.docId, docId);
-          }
-          knownVersion.set(d.docId, version);
+          observe(d.docId, docVersion(d.src), docId);
         }
-        // Read but not loaded (missing, unreadable, over a limit): not known.
-        for (const read of reads) if (!loaded.has(read)) knownVersion.delete(read);
+        // A target behind a `missing-section` or `duplicate` edge was parsed
+        // but not visited, so it is not in `docs`: only a failed load counts.
+        const unloaded = new Set<DocId>();
+        if (!loaded.has(docId)) unloaded.add(docId);
+        for (const e of resolved.includes) {
+          if (e.status === "missing-doc" && !loaded.has(e.toDoc)) unloaded.add(e.toDoc);
+        }
+        for (const doc of unloaded) observe(doc, UNLOADED, docId);
         link = { edges: resolved.includes.filter((e) => e.status === "ok"), reads };
         // An include target that could not be read (EIO, EACCES, a network
         // glitch) may read next time, and nothing would commit to tell us:
@@ -1110,8 +1127,9 @@ export function createEngine(opts: EngineOptions): Engine {
     // Replacing a version the index did not know: the document changed
     // outside the engine first, so its shape may differ from what the index
     // saw even when this commit kept the shape of what it replaced.
-    const seen = knownVersion.has(docId) && knownVersion.get(docId) === commit.replacedVersion;
-    knownVersion.set(docId, version);
+    const seen =
+      knownVersion.has(docId) && knownVersion.get(docId) === (commit.replacedVersion ?? UNLOADED);
+    knownVersion.set(docId, version ?? UNLOADED);
     const old = parseHashByDoc.get(docId);
     if (old !== undefined && old !== version) parseCache.delete(old);
     if (src !== undefined && version !== undefined && parsed !== undefined) {
