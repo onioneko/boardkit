@@ -188,7 +188,7 @@ exported as `DEFAULT_COMPLEXITY_LIMITS`:
 | `maxIndentColumns` | 160 | Columns of whitespace in one line's prefix, a tab advancing to the next multiple of 4 |
 | `maxBracketDepth` | 32 | `[` nesting in one paragraph; escapes are skipped, and a blank line or a line of only `>` markers resets the count (an empty list item does not, since it cannot end a paragraph) |
 | `maxDelimiterRun` | 64 | A run of one of `*`, `_` or `~`; a line of one such character (or `-` or a backtick) and whitespace, a thematic break or code fence, is not counted |
-| `maxEmphasisDepth` | 64 | Emphasis nesting in one paragraph, estimated from the CommonMark flanking rules: a run that can only open adds its length, a run that can only close subtracts it |
+| `maxEmphasisDepth` | 64 | Emphasis and strikethrough nesting in one paragraph, estimated with the parser's own rules for which `*`, `_` and `~` runs can open or close: a run that can open adds its length, and a run that can only close cancels openers of its own marker that could not also close |
 
 A document over any limit is handled exactly like one over the size limit, with an
 `E_DOCUMENT_TOO_COMPLEX` diagnostic that gives the line, and reason `too-complex` for a rejected
@@ -198,6 +198,10 @@ count like any others: a code sample that opens many `[` without closing them (f
 be refused. Raise the limit that refuses it if your documents need this. Recognizing fences
 instead would let input that the parser reads differently slip past the scan.
 
+The counts are upper bounds, so some ordinary text is over-counted. In particular a `*` between
+two letters or digits (`2*3`) can open emphasis, so a paragraph with more than 64 of them is
+refused, even if they never pair up.
+
 The limits are on by default. Raise one, or set it to `Infinity`, if real documents need it, or
 pass `false` to turn the scan off:
 
@@ -206,10 +210,13 @@ const engine = createEngine({ storage, complexityLimits: { maxDelimiterRun: 200 
 ```
 
 Each field is a non-negative integer or `Infinity`; any other value, or an unknown field, throws
-a `TypeError`. The limits rule out the known stack overflows (deep containers, brackets and
-emphasis) and the worst nesting costs, but the scan only approximates the parser, and it does
-not bound every superlinear shape: see the table above. Other input may still overflow the
-parser's stack.
+a `TypeError`. Each count is meant as an upper bound on the nesting the parser builds: the
+emphasis estimate follows the parser's own open and close rules, and a seeded property test
+checks that nothing the scan accepts parses deeper than the limit. That rules out the known
+stack overflows (deep containers, brackets and emphasis) and the worst nesting costs. The scan
+is still a model of the parser, not the parser, so treat this as tested rather than proven, and
+it does not bound every superlinear shape: see the table above. A parse that overflows anyway
+is caught, as described next.
 
 Whatever the limits, a parse that throws never escapes the engine. A write is rejected with
 reason `validation` and an `E_PARSE_FAILED` diagnostic. A stored document that fails to parse is
