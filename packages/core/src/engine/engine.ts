@@ -1039,6 +1039,8 @@ export function createEngine(opts: EngineOptions): Engine {
   // makes a stale entry unreachable (different content → different key), so
   // multi-process cache correctness is not required beyond that keying.
   const parseCache = createParseCache((src) => parseDoc(src, parseOptions));
+  /** Bumped by `registerBlock`: parses made under an older value are stale. */
+  let registryEpoch = 0;
   // docId → the content hash under which that doc's ParsedDoc is currently
   // cached, so a successful write/external-write can drop the affected entry.
   const parseHashByDoc = new Map<DocId, string>();
@@ -1081,13 +1083,27 @@ export function createEngine(opts: EngineOptions): Engine {
    * the subscribers whose include closure read it, when its include shape may
    * have changed.
    */
-  function onCommit(commit: CommitEffect): void {
-    const { docId, src, version, parsed } = commit;
+  /**
+   * The pipeline dependencies for one write call. Its `onCommit` knows the
+   * block registry the call started under: a `registerBlock` during the call
+   * changes fence recognition, so the write's parse may be stale by the time
+   * it commits.
+   */
+  function depsForCall(): PipelineDeps {
+    const epoch = registryEpoch;
+    return { ...deps, onCommit: (commit) => onCommit(commit, epoch) };
+  }
+
+  function onCommit(commit: CommitEffect, epoch = registryEpoch): void {
+    const { docId, src, version } = commit;
+    // A parse made before a `registerBlock` is not seeded, and its shape is
+    // not trusted.
+    const current = epoch === registryEpoch;
+    const parsed = current ? commit.parsed : undefined;
     // Replacing a version the index did not know: the document changed
     // outside the engine first, so its shape may differ from what the index
     // saw even when this commit kept the shape of what it replaced.
-    const seen =
-      knownVersion.has(docId) && knownVersion.get(docId) === commit.replacedVersion;
+    const seen = knownVersion.has(docId) && knownVersion.get(docId) === commit.replacedVersion;
     knownVersion.set(docId, version);
     const old = parseHashByDoc.get(docId);
     if (old !== undefined && old !== version) parseCache.delete(old);
@@ -1097,7 +1113,7 @@ export function createEngine(opts: EngineOptions): Engine {
       parseHashByDoc.delete(docId);
     }
     invalidateMergeForDoc(docId);
-    if (commit.shapeChanged || !seen) includeShapeChanged(docId);
+    if (commit.shapeChanged || !seen || !current) includeShapeChanged(docId);
   }
 
   /** LINK reads documents through the parse cache and the size limit. */
@@ -1507,8 +1523,9 @@ export function createEngine(opts: EngineOptions): Engine {
       const validated = tryDocId(docId);
       if (!validated.ok) return invalidIdRejection(validated.diagnostic);
       const id = validated.id;
+      const callDeps = depsForCall();
       return ensureReverseIndex().then(() =>
-        writeDocPipeline(deps, id, writer, fullText, {
+        writeDocPipeline(callDeps, id, writer, fullText, {
           ...(expectedVersion !== undefined ? { expectedVersion } : {}),
         }),
       );
@@ -1518,8 +1535,9 @@ export function createEngine(opts: EngineOptions): Engine {
       if (!vDoc.ok) return invalidIdRejection(vDoc.diagnostic);
       const vBlock = tryBlockId(blockId);
       if (!vBlock.ok) return invalidIdRejection(vBlock.diagnostic);
+      const callDeps = depsForCall();
       return ensureReverseIndex().then(() =>
-        patchDocPipeline(deps, vDoc.id, vBlock.id, attrs, writer, {
+        patchDocPipeline(callDeps, vDoc.id, vBlock.id, attrs, writer, {
           ...(expectedVersion !== undefined ? { expectedVersion } : {}),
           ...(expected !== undefined ? { expected } : {}),
           strictExpected: strictExpected ?? strictExpectedDefault,
@@ -1527,9 +1545,10 @@ export function createEngine(opts: EngineOptions): Engine {
       );
     },
     applyIntent(intent, { writer }) {
+      const callDeps = depsForCall();
       return ensureReverseIndex().then(() =>
         applyIntentRoute(
-          deps,
+          callDeps,
           { ...intent, strictExpected: intent.strictExpected ?? strictExpectedDefault },
           writer,
         ),
@@ -1539,14 +1558,16 @@ export function createEngine(opts: EngineOptions): Engine {
       const validated = tryDocId(docId);
       if (!validated.ok) return invalidIdRejection(validated.diagnostic);
       const id = validated.id;
-      return ensureReverseIndex().then(() => createDocPipeline(deps, id, writer, content));
+      const callDeps = depsForCall();
+      return ensureReverseIndex().then(() => createDocPipeline(callDeps, id, writer, content));
     },
     async importDoc(docId, { writer, content, ignoreSizeLimit }) {
       const validated = tryDocId(docId);
       if (!validated.ok) return invalidIdRejection(validated.diagnostic);
       const id = validated.id;
+      const callDeps = depsForCall();
       return ensureReverseIndex().then(() =>
-        importDocPipeline(deps, id, writer, content, {
+        importDocPipeline(callDeps, id, writer, content, {
           ...(ignoreSizeLimit !== undefined ? { ignoreSizeLimit } : {}),
         }),
       );
@@ -1555,7 +1576,8 @@ export function createEngine(opts: EngineOptions): Engine {
       const validated = tryDocId(docId);
       if (!validated.ok) return invalidIdRejection(validated.diagnostic);
       const id = validated.id;
-      return ensureReverseIndex().then(() => removeDocPipeline(deps, id, writer));
+      const callDeps = depsForCall();
+      return ensureReverseIndex().then(() => removeDocPipeline(callDeps, id, writer));
     },
 
     async getDoc(docId) {
@@ -1638,6 +1660,7 @@ export function createEngine(opts: EngineOptions): Engine {
       // involved docs' hashes — neither key moves when only the registry
       // changes, so both must be cleared outright. Registration is a rare,
       // wiring-time operation; a full clear is the correct, cheap answer.
+      registryEpoch += 1;
       parseCache.clear();
       parseHashByDoc.clear();
       for (const key of [...mergeCache.keys()]) evictMergeKey(key);

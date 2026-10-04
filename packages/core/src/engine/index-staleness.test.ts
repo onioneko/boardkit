@@ -138,3 +138,44 @@ describe("I1: a commit is compared with the shape the index last saw", () => {
     expect(seen).toEqual([]);
   });
 });
+
+describe("I2: registerBlock while a write is in flight", () => {
+  it("does not seed a parse made under the old block registry", async () => {
+    const inner = createMemStorage();
+    let hold: Promise<void> | undefined;
+    let held: () => void = () => {};
+    const reached = new Promise<void>((resolve) => {
+      held = resolve;
+    });
+    const storage: Storage = {
+      ...inner,
+      writeAtomic: async (docId: DocId, content: string) => {
+        if (hold !== undefined) {
+          held();
+          await hold;
+        }
+        await inner.writeAtomic(docId, content);
+      },
+    };
+    const engine = createEngine({ storage, clock });
+    await engine.createDoc("d", { writer, content: "# D\n" });
+    const widget: BlockType = {
+      type: "widget",
+      schema: { type: "object", required: ["id"], properties: { id: { type: "string" } } },
+    };
+    let release: () => void = () => {};
+    hold = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const write = engine.write("d", { writer, fullText: "# D\n\n```widget\nid: w1\n```\n" });
+    await reached;
+    engine.registerBlock(widget);
+    hold = undefined;
+    release();
+    expect((await write).ok).toBe(true);
+
+    const fresh = createEngine({ storage: inner, clock, blocks: [widget] });
+    expect(await fresh.getBlock("d", "w1")).toBeDefined();
+    expect(await engine.getBlock("d", "w1")).toEqual(await fresh.getBlock("d", "w1"));
+  });
+});
