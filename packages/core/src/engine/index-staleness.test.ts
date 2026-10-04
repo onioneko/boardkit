@@ -209,3 +209,30 @@ describe("I3: an include target that could not be read once", () => {
     expect(seen).toContain("y");
   });
 });
+
+describe("M1: a validate hook that changes the attrs it is given", () => {
+  it("cannot change the parse a write seeds", async () => {
+    const normalizing: BlockType = {
+      type: "tag",
+      schema: {
+        type: "object",
+        required: ["id", "name"],
+        properties: { id: { type: "string" }, name: { type: "string" } },
+      },
+      validate: (attrs) => {
+        (attrs as Record<string, unknown>).name = String(attrs.name).toUpperCase();
+        return [];
+      },
+    };
+    const storage = createMemStorage();
+    const engine = createEngine({ storage, clock, blocks: [normalizing] });
+    const doc = "# T\n\n```tag\nid: t1\nname: low\n```\n";
+    expect((await engine.createDoc("t", { writer, content: doc })).ok).toBe(true);
+    expect((await engine.write("t", { writer, fullText: `${doc}\nmore\n` })).ok).toBe(true);
+    const fresh = createEngine({ storage, clock, blocks: [normalizing] });
+    expect((await engine.getBlock("t", "t1"))?.attrs).toEqual(
+      (await fresh.getBlock("t", "t1"))?.attrs,
+    );
+    expect((await engine.getBlock("t", "t1"))?.attrs.name).toBe("low");
+  });
+});

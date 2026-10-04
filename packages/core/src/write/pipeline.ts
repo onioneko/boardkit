@@ -400,7 +400,11 @@ function validateAndTruncate(
   const diagnostics: Diagnostic[] = [...parsed.diagnostics];
   for (const node of blocksOf(parsed)) {
     const type = deps.blockTypes.get(node.type);
-    if (type !== undefined) for (const d of validateBlock(type, node.attrs)) diagnostics.push(d);
+    // The hooks get a copy: this parse is seeded into the engine's cache,
+    // and a hook that normalizes attrs in place must not change it.
+    if (type !== undefined) {
+      for (const d of validateBlock(type, structuredClone(node.attrs))) diagnostics.push(d);
+    }
   }
   if (diagnostics.length > 0) return { ok: false, diagnostics };
 
