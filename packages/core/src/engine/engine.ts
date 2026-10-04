@@ -25,8 +25,13 @@ import type { Diagnostic } from "../model/diagnostic.js";
 import { diagnostic } from "../model/diagnostic.js";
 import type { Block, ParsedDoc } from "../model/doc.js";
 import { asDocId, type DocId, tryBlockId, tryDocId } from "../model/ids.js";
+import {
+  type ComplexityLimits,
+  documentComplexityDiagnostic,
+  resolveComplexityLimits,
+} from "../parse/complexity.js";
 import type { ParseOptions } from "../parse/options.js";
-import { parseDoc } from "../parse/pipeline.js";
+import { parseDoc, parseFailedDiagnostic } from "../parse/pipeline.js";
 import {
   documentSizeDiagnostic,
   exceedsDocumentLimit,
@@ -115,8 +120,8 @@ export interface Projector<T = unknown> {
   project(input: ProjectionInput): T | Promise<T>;
   /**
    * The output to fall back to when the projection cannot complete: the
-   * projector threw, or a projection middleware rejected it with a
-   * `WriteRejection`. Without this hook the engine falls back to the raw
+   * projector threw, or a projection middleware threw (a `WriteRejection` or
+   * any other error). Without this hook the engine falls back to the raw
    * source text, which is right for a projector whose output *is* source
    * text (`text`) but wrong for one whose output is interpreted — raw
    * markdown handed to an HTML sink is unsanitized markup. A projector whose
@@ -127,7 +132,8 @@ export interface Projector<T = unknown> {
    * error is reported as a second `E_PROJECTOR_ERROR`.
    * @param src The document's raw source.
    * @param diagnostics Why the projection degraded: the `E_PROJECTOR_ERROR`
-   *   for a throwing projector, or the rejection's own diagnostics.
+   *   for a throwing projector, a `WriteRejection`'s own diagnostics, or the
+   *   `E_MIDDLEWARE_ERROR` for any other error a projection middleware threw.
    * @returns The degraded output.
    */
   degrade?(src: string, diagnostics: readonly Diagnostic[]): T;
@@ -245,6 +251,39 @@ export interface EngineOptions {
    */
   readonly maxDocumentBytes?: number;
   /**
+   * Bounds on markdown shapes that are costly or unsafe to parse, checked by a
+   * linear scan before any parse. Deeply nested containers are the worst
+   * case: the markdown parser's time grows quadratically with nesting depth,
+   * and a few thousand levels on one line (a few KB) overflow the call stack.
+   * On by default with {@link DEFAULT_COMPLEXITY_LIMITS} (32 container markers
+   * on a line, 160 columns of prefix indentation, `[` nesting 32 deep in a
+   * paragraph, delimiter runs of 64); an object overrides the fields it sets,
+   * and `false` turns the check off. A document over any limit is treated
+   * like one over {@link EngineOptions.maxDocumentBytes}, with an
+   * `E_DOCUMENT_TOO_COMPLEX` diagnostic:
+   * - a write (`write`, `patch`, `applyIntent`, `createDoc`) whose result
+   *   exceeds a limit is rejected with reason `too-complex`, and nothing is
+   *   stored;
+   * - a stored document over a limit is never parsed: its projection comes
+   *   back `ok: false`, an include of it stays verbatim, `getBlock` treats it
+   *   as absent, patches and intents against it are rejected with reason
+   *   `too-complex`, and an external write of it is not evented. A full-text
+   *   `write` within the limits may still replace it.
+   *
+   * The limits do not make every document cheap to parse: dense inline markup
+   * within them still costs superlinear time (see the projections guide).
+   * Each field is a non-negative integer or `Infinity`; any other value (or
+   * an unknown field) is a programming error and throws a `TypeError` at
+   * construction. Whatever the limits, a parse that throws never escapes the
+   * engine: writes are rejected with an `E_PARSE_FAILED` diagnostic and reads
+   * degrade as above.
+   * @example
+   * ```ts
+   * createEngine({ storage, complexityLimits: { maxContainerDepth: 64 } });
+   * ```
+   */
+  readonly complexityLimits?: ComplexityLimits | false;
+  /**
    * Enable external-write watching. `true` resolves the root from
    * `storage.rootDir` (set by filesystem storage); a {@link WatchOptions} object
    * pins `rootDir`/`source`/writer id. Absent or `false` disables watching.
@@ -261,7 +300,9 @@ export interface ProjectionResult<T = unknown> {
   /**
    * True when the projection produced output; false when it could not run at
    * all (a missing/invalid document, one over
-   * {@link EngineOptions.maxDocumentBytes}, or an unknown projector) and
+   * {@link EngineOptions.maxDocumentBytes} or a
+   * {@link EngineOptions.complexityLimits} limit, one whose parse threw, or an
+   * unknown projector) and
    * `output` is the empty string with the reason carried in `diagnostics`.
    */
   readonly ok: boolean;
@@ -270,7 +311,7 @@ export interface ProjectionResult<T = unknown> {
    * untouched (a string for the built-in `text` projector, but arbitrary — a
    * react component tree, an email body, terminal output, a pdf, …). The empty
    * string when `ok` is false. When the projection degrades (the projector
-   * threw, or a projection middleware rejected it), `ok` stays true and
+   * threw, or a projection middleware threw), `ok` stays true and
    * `output` is the projector's {@link Projector.degrade} result, or the raw
    * source text when the projector declares none; if `degrade` itself throws,
    * it is the empty string. The cause is carried in `diagnostics`.
@@ -302,10 +343,14 @@ export interface Engine {
    * Project one document through a projector. Fail-soft: a throwing projector
    * degrades to its {@link Projector.degrade} output (the raw source text when
    * it declares none) plus an `E_PROJECTOR_ERROR` diagnostic, and a projection
-   * middleware that throws a {@link WriteRejection} degrades the same way with
-   * that rejection's diagnostics attached — neither ever throws out of this
-   * method. A block whose hook throws degrades alone: the built-in projectors
-   * render it as its verbatim source and report `E_BLOCK_HOOK_ERROR`.
+   * middleware that throws degrades the same way, with a
+   * {@link WriteRejection}'s own diagnostics or, for any other error, an
+   * `E_MIDDLEWARE_ERROR` diagnostic carrying its message. A document that
+   * cannot be parsed (over a limit, or its parse threw) comes back `ok: false`
+   * with a diagnostic. None of these throw out of this method; an error from
+   * the storage port itself (an unreadable board) still does. A block whose
+   * hook throws degrades alone: the built-in projectors render it as its
+   * verbatim source and report `E_BLOCK_HOOK_ERROR`.
    * @typeParam T The projector's output type, asserted by the caller: the engine
    *   passes the projector's return value through untouched and does not check
    *   it. Defaults to `unknown`, which forces narrowing at the call site.
@@ -420,7 +465,9 @@ export interface Engine {
    * @param blockId The block to read.
    * @returns `{ attrs, type, version }`, or `undefined` when the document or
    *   block does not exist (or either id is invalid, or the document is over
-   *   {@link EngineOptions.maxDocumentBytes} — treated as absent, fail-soft).
+   *   {@link EngineOptions.maxDocumentBytes} or a
+   *   {@link EngineOptions.complexityLimits} limit, or its parse threw —
+   *   treated as absent, fail-soft).
    */
   getBlock(
     docId: string,
@@ -497,7 +544,10 @@ export interface Engine {
    *   with only an `E_INVALID_ID` diagnostic for an invalid id. A document over
    *   {@link EngineOptions.maxDocumentBytes} is not parsed: as the board it
    *   yields no `docs` and an `E_DOCUMENT_TOO_LARGE` diagnostic, and as an
-   *   include target its edge is `missing-doc` with that diagnostic.
+   *   include target its edge is `missing-doc` with that diagnostic. A
+   *   document over a {@link EngineOptions.complexityLimits} limit
+   *   (`E_DOCUMENT_TOO_COMPLEX`), or whose parse throws (`E_PARSE_FAILED`),
+   *   is treated the same way.
    */
   refGraph(docId: string): Promise<RefGraph>;
   /**
@@ -583,6 +633,12 @@ export function createEngine(opts: EngineOptions): Engine {
   const parseOptions: ParseOptions = { ...(opts.parseOptions ?? {}), blockTypes: fenceTypes };
   const includeLimits = resolveIncludeLimits(opts.includeLimits);
   const maxDocumentBytes = resolveMaxDocumentBytes(opts.maxDocumentBytes);
+  const complexityLimits = resolveComplexityLimits(opts.complexityLimits);
+  /** The complexity diagnostic for a stored document, or `undefined` when within the limits or off. */
+  const complexityOf = (id: DocId, src: string): Diagnostic | undefined =>
+    complexityLimits === false
+      ? undefined
+      : documentComplexityDiagnostic(id, src, complexityLimits, "read");
   const watchOptions: WatchOptions | undefined =
     opts.watch === undefined || opts.watch === false
       ? undefined
@@ -635,8 +691,14 @@ export function createEngine(opts: EngineOptions): Engine {
     const subscribed = [...scopedSubscribers.keys()];
     const edges: ResolvedInclude[] = [];
     for (const docId of subscribed) {
-      const link = await resolveIncludes(docId, opts.storage, parseOptions, linkOptions);
-      for (const e of link.includes) edges.push(e);
+      // One subscriber whose board cannot be read contributes no edges; it
+      // must never fail the write that triggered the rebuild (or any other).
+      try {
+        const link = await resolveIncludes(docId, opts.storage, parseOptions, linkOptions);
+        for (const e of link.includes) edges.push(e);
+      } catch {
+        // Fail-soft: the board's own projection reports the error when read.
+      }
     }
     reverseIndex = buildReverseIndex(edges);
     reverseIndexBuiltGeneration = target;
@@ -752,6 +814,7 @@ export function createEngine(opts: EngineOptions): Engine {
     ...(opts.writePolicy !== undefined ? { policy: opts.writePolicy } : {}),
     middleware: writeMiddlewares,
     maxDocumentBytes,
+    complexityLimits,
   };
 
   // ── Engine-internal caches ────────────────────────────────
@@ -774,7 +837,8 @@ export function createEngine(opts: EngineOptions): Engine {
    * (LINK for the board and each included document, `getBlock`) goes through
    * here, so a document is parsed once per content and its cost is paid on the
    * first read after a write, not on every projection. Callers check the size
-   * limit first: an oversized document never reaches this function.
+   * and complexity limits first: a document over one never reaches this
+   * function. A parse that throws anyway propagates, uncached; callers catch it.
    */
   function parseCached(docId: DocId, src: string): ParsedDoc {
     const { doc, hash } = parseCache.parse(src);
@@ -783,7 +847,7 @@ export function createEngine(opts: EngineOptions): Engine {
   }
 
   /** LINK reads documents through the parse cache and the size limit. */
-  const linkOptions = { parse: parseCached, maxDocumentBytes };
+  const linkOptions = { parse: parseCached, maxDocumentBytes, complexityLimits };
 
   // Merge cache: board docId + the hash set of every involved document →
   // MergedTree. Keyed by the sorted (docId, content-hash) pairs of all
@@ -873,6 +937,7 @@ export function createEngine(opts: EngineOptions): Engine {
           parseOptions,
           rootDir: watchOptions.rootDir,
           maxDocumentBytes,
+          complexityLimits,
           ...(watchOptions.externalWriterId !== undefined
             ? { externalWriterId: watchOptions.externalWriterId }
             : {}),
@@ -996,16 +1061,29 @@ export function createEngine(opts: EngineOptions): Engine {
           versions: {},
         };
       }
-      // A document over the size limit is never parsed (fail-soft: diagnosed).
-      const tooLarge = documentSizeDiagnostic(id, src, maxDocumentBytes, "read");
+      // A document over the size or a complexity limit is never parsed
+      // (fail-soft: diagnosed).
+      const tooLarge =
+        documentSizeDiagnostic(id, src, maxDocumentBytes, "read") ?? complexityOf(id, src);
       if (tooLarge !== undefined) {
         return { ok: false, output: emptyOutput, diagnostics: [tooLarge], versions: {} };
       }
-      const link = await resolveIncludes(id, opts.storage, parseOptions, linkOptions);
 
-      // PARSE through the cache: one ParsedDoc per content hash. LINK
-      // has normally just parsed the board through the same cache.
-      const doc = parseCached(id, src);
+      // PARSE through the cache: one ParsedDoc per content hash, which LINK
+      // then reuses for the board. A parse that throws is diagnosed, not
+      // propagated.
+      let doc: ParsedDoc;
+      try {
+        doc = parseCached(id, src);
+      } catch (err) {
+        return {
+          ok: false,
+          output: emptyOutput,
+          diagnostics: [parseFailedDiagnostic(id, err)],
+          versions: {},
+        };
+      }
+      const link = await resolveIncludes(id, opts.storage, parseOptions, linkOptions);
       const diagnostics: Diagnostic[] = [...doc.diagnostics, ...link.diagnostics];
 
       // RESOLVE: a separate, per-projection stage after MERGE. It re-runs
@@ -1126,15 +1204,21 @@ export function createEngine(opts: EngineOptions): Engine {
         try {
           await compose(projectionMiddlewares)(ctx, runProjector);
         } catch (err) {
-          if (err instanceof WriteRejection) {
-            // Fail-soft: a projection middleware that throws before next()
-            // rejects the projection — degrade the output and attach its
-            // diagnostics; the projection never throws.
-            ctx.output = degraded(err.diagnostics);
-            for (const d of err.diagnostics) diagnostics.push(d);
-          } else {
-            throw err;
-          }
+          // Fail-soft: a projection middleware that throws rejects the
+          // projection. Degrade the output and attach the rejection's own
+          // diagnostics, or an E_MIDDLEWARE_ERROR for any other error, so one
+          // misbehaving plugin never takes the whole view down.
+          const why =
+            err instanceof WriteRejection
+              ? err.diagnostics
+              : [
+                  diagnostic(
+                    "E_MIDDLEWARE_ERROR",
+                    `projection middleware threw: ${err instanceof Error ? err.message : String(err)}`,
+                  ),
+                ];
+          ctx.output = degraded(why);
+          for (const d of why) diagnostics.push(d);
         }
       }
       const output = ctx.output as T;
@@ -1250,7 +1334,13 @@ export function createEngine(opts: EngineOptions): Engine {
       const src = await opts.storage.read(vDoc.id);
       if (src === undefined) return undefined;
       if (exceedsDocumentLimit(src, maxDocumentBytes)) return undefined;
-      const parsed = parseCached(vDoc.id, src);
+      if (complexityOf(vDoc.id, src) !== undefined) return undefined;
+      let parsed: ParsedDoc;
+      try {
+        parsed = parseCached(vDoc.id, src);
+      } catch {
+        return undefined; // fail-soft: an unparseable document has no blocks
+      }
       const block = parsed.nodes.find((n): n is Block => "blockId" in n && n.blockId === vBlock.id);
       if (block === undefined) return undefined;
       // The parse is shared through the cache: hand out a copy of the attrs.

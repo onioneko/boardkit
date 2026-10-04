@@ -13,8 +13,9 @@ import type { Diagnostic } from "../model/diagnostic.js";
 import { diagnostic } from "../model/diagnostic.js";
 import type { Block, ParsedDoc } from "../model/doc.js";
 import type { BlockId, DocId } from "../model/ids.js";
+import { type ComplexityLimits, complexityDiagnostic } from "../parse/complexity.js";
 import type { ParseOptions } from "../parse/options.js";
-import { parseDoc } from "../parse/pipeline.js";
+import { parseDoc, parseFailedDiagnostic } from "../parse/pipeline.js";
 import {
   DEFAULT_MAX_DOCUMENT_BYTES,
   documentSizeDiagnostic,
@@ -118,7 +119,7 @@ export type WriteResult =
       readonly ok: false;
       /** Why the write was rejected. */
       readonly rejection: {
-        /** Machine-readable rejection reason: `write-domain`, `missing-doc`, `validation`, `stale-version`, `expected-mismatch`, `missing-block`, `unknown-type`, `unknown-affordance`, `patch`, `unsupported`, `exists`, `invalid-id`, `too-large`, … */
+        /** Machine-readable rejection reason: `write-domain`, `missing-doc`, `validation`, `stale-version`, `expected-mismatch`, `missing-block`, `unknown-type`, `unknown-affordance`, `patch`, `unsupported`, `exists`, `invalid-id`, `too-large`, `too-complex`, … */
         readonly reason: string;
         /** The live value(s) the write conflicted with (e.g. the current version or attrs), when relevant. */
         readonly current?: unknown;
@@ -148,6 +149,13 @@ export interface PipelineDeps {
    * parsed: patches and intents against it are rejected the same way.
    */
   readonly maxDocumentBytes?: number;
+  /**
+   * Markdown complexity limits; absent takes `DEFAULT_COMPLEXITY_LIMITS`, and
+   * `false` turns the check off. A write whose result is over a limit is
+   * rejected with reason `too-complex`, and a stored document over one is not
+   * parsed: patches and intents against it are rejected the same way.
+   */
+  readonly complexityLimits?: ComplexityLimits | false;
 }
 
 /**
@@ -167,6 +175,50 @@ export function sizeRejection(
   const max = deps.maxDocumentBytes ?? DEFAULT_MAX_DOCUMENT_BYTES;
   const d = documentSizeDiagnostic(docId, src, max, action);
   return d === undefined ? undefined : rejection("too-large", [d]);
+}
+
+/**
+ * A `too-large` or `too-complex` rejection when `src` is over the document
+ * size limit or a complexity limit: the checks that run before any parse.
+ * @param deps The pipeline dependencies (for the limits).
+ * @param docId The document the source belongs to.
+ * @param src The source to check.
+ * @param action `"write"` for content about to be stored, `"read"` for a stored document.
+ * @returns The rejection, or `undefined` when the source may be parsed.
+ */
+export function parseLimitRejection(
+  deps: Pick<PipelineDeps, "maxDocumentBytes" | "complexityLimits">,
+  docId: DocId,
+  src: string,
+  action: "write" | "read",
+): WriteResult | undefined {
+  const tooLarge = sizeRejection(deps, docId, src, action);
+  if (tooLarge !== undefined) return tooLarge;
+  const d = complexityDiagnostic(docId, src, deps.complexityLimits, action);
+  return d === undefined ? undefined : rejection("too-complex", [d]);
+}
+
+/**
+ * Parse a source, turning a parser exception (a stack overflow on deeply
+ * nested input the complexity limits did not catch, for example) into an
+ * `E_PARSE_FAILED` diagnostic.
+ * @param src The source to parse.
+ * @param options Parse options.
+ * @param docId The document the source belongs to (for the diagnostic).
+ * @returns The parse, or the diagnostic when the parser threw.
+ */
+export function tryParseDoc(
+  src: string,
+  options: ParseOptions | undefined,
+  docId: DocId,
+):
+  | { readonly ok: true; readonly parsed: ParsedDoc }
+  | { readonly ok: false; readonly diagnostic: Diagnostic } {
+  try {
+    return { ok: true, parsed: parseDoc(src, options) };
+  } catch (err) {
+    return { ok: false, diagnostic: parseFailedDiagnostic(docId, err) };
+  }
 }
 
 function rejection(
@@ -202,9 +254,12 @@ async function emit(
 /** Validate parsed content and apply bounded-history truncation, returning the final source. */
 function validateAndTruncate(
   deps: PipelineDeps,
+  docId: DocId,
   src: string,
 ): { ok: true; src: string } | { ok: false; diagnostics: readonly Diagnostic[] } {
-  const parsed = parseDoc(src, deps.parseOptions);
+  const attempt = tryParseDoc(src, deps.parseOptions, docId);
+  if (!attempt.ok) return { ok: false, diagnostics: [attempt.diagnostic] };
+  const parsed = attempt.parsed;
   const diagnostics: Diagnostic[] = [...parsed.diagnostics];
   for (const node of blocksOf(parsed)) {
     const type = deps.blockTypes.get(node.type);
@@ -248,16 +303,30 @@ function diffAndEmitDrafts(
   after: string,
   writer: Writer,
 ): EventDraft[] {
-  // A stored document over the size limit is never parsed, so there is no
-  // tree to diff a replacement against. The log records a reset instead:
-  // `doc.removed` then `doc.created`, followed by the new content diffed from
-  // an empty document. A consumer replaying the log drops the old state on
+  // A stored document over the size limit or a complexity limit is never
+  // parsed (and one whose parse throws cannot be), so there is no tree to diff
+  // a replacement against. The log records a reset instead: `doc.removed`
+  // then `doc.created`, followed by the new content diffed from an empty
+  // document. A consumer replaying the log drops the old state on
   // `doc.removed` and so ends with exactly the new document.
   const max = deps.maxDocumentBytes ?? DEFAULT_MAX_DOCUMENT_BYTES;
-  const reset = exceedsDocumentLimit(before, max);
-  const beforeParsed = parseDoc(reset ? "" : before, deps.parseOptions);
-  const afterParsed = parseDoc(after, deps.parseOptions);
-  const diff = diffDocs(beforeParsed, afterParsed);
+  const beforeAttempt =
+    exceedsDocumentLimit(before, max) ||
+    complexityDiagnostic(docId, before, deps.complexityLimits, "read") !== undefined
+      ? undefined
+      : tryParseDoc(before, deps.parseOptions, docId);
+  const reset = beforeAttempt === undefined || !beforeAttempt.ok;
+  const beforeParsed = reset ? parseDoc("", deps.parseOptions) : beforeAttempt.parsed;
+  // The new content was parsed (or checked) before it was stored. Should its
+  // parse throw here anyway, the commit has landed: record the reset alone.
+  const afterAttempt = tryParseDoc(after, deps.parseOptions, docId);
+  if (!afterAttempt.ok) {
+    return [
+      { t: deps.clock(), type: "doc.removed", docId, by: writer },
+      { t: deps.clock(), type: "doc.created", docId, by: writer },
+    ];
+  }
+  const diff = diffDocs(beforeParsed, afterAttempt.parsed);
   const drafts = synthesizeEvents(diff, docId, {
     clock: deps.clock,
     blockTypes: deps.blockTypes,
@@ -334,11 +403,11 @@ export async function writeDoc(
       if (decideFullText(docVersion(current), guards) === "reject") {
         return rejection("stale-version", [], docVersion(current));
       }
-      const tooLarge = sizeRejection(deps, docId, text, "write");
-      if (tooLarge !== undefined) return tooLarge;
-      const validated = validateAndTruncate(deps, text);
+      const overLimit = parseLimitRejection(deps, docId, text, "write");
+      if (overLimit !== undefined) return overLimit;
+      const validated = validateAndTruncate(deps, docId, text);
       if (!validated.ok) return rejection("validation", validated.diagnostics);
-      const grown = sizeRejection(deps, docId, validated.src, "write");
+      const grown = parseLimitRejection(deps, docId, validated.src, "write");
       if (grown !== undefined) return grown;
       await deps.storage.writeAtomic(docId, validated.src);
       const drafts = diffAndEmitDrafts(deps, docId, current, validated.src, writer);
@@ -423,9 +492,11 @@ export async function patchDoc(
           diagnostic("E_DOC_MISSING", `document not found: ${docId}`),
         ]);
       }
-      const storedTooLarge = sizeRejection(deps, docId, current, "read");
-      if (storedTooLarge !== undefined) return storedTooLarge;
-      const currentParsed = parseDoc(current, deps.parseOptions);
+      const storedOverLimit = parseLimitRejection(deps, docId, current, "read");
+      if (storedOverLimit !== undefined) return storedOverLimit;
+      const currentAttempt = tryParseDoc(current, deps.parseOptions, docId);
+      if (!currentAttempt.ok) return rejection("validation", [currentAttempt.diagnostic]);
+      const currentParsed = currentAttempt.parsed;
       const block = blocksOf(currentParsed).find((b) => b.blockId === proposed.blockId);
       if (block === undefined) {
         return rejection("missing-block", [
@@ -503,8 +574,8 @@ export async function patchDoc(
         delta: effectiveDelta,
       });
       if (patchDiags.length > 0) return rejection("patch", patchDiags);
-      const tooLarge = sizeRejection(deps, docId, src, "write");
-      if (tooLarge !== undefined) return tooLarge;
+      const overLimit = parseLimitRejection(deps, docId, src, "write");
+      if (overLimit !== undefined) return overLimit;
 
       await deps.storage.writeAtomic(docId, src);
       const drafts = diffAndEmitDrafts(deps, docId, current, src, writer);
@@ -552,11 +623,11 @@ export async function createDoc(
           diagnostic("E_DOC_EXISTS", `document already exists: ${docId}`),
         ]);
       }
-      const tooLarge = sizeRejection(deps, docId, proposed.content, "write");
-      if (tooLarge !== undefined) return tooLarge;
-      const validated = validateAndTruncate(deps, proposed.content);
+      const overLimit = parseLimitRejection(deps, docId, proposed.content, "write");
+      if (overLimit !== undefined) return overLimit;
+      const validated = validateAndTruncate(deps, docId, proposed.content);
       if (!validated.ok) return rejection("validation", validated.diagnostics);
-      const grown = sizeRejection(deps, docId, validated.src, "write");
+      const grown = parseLimitRejection(deps, docId, validated.src, "write");
       if (grown !== undefined) return grown;
       await deps.storage.writeAtomic(docId, validated.src);
       const { records, appended } = await emit(deps, [

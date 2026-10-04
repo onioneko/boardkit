@@ -348,6 +348,48 @@ describe("engine (integration)", () => {
     expect(out.output).toBe("# T");
   });
 
+  it("degrades with E_MIDDLEWARE_ERROR when projection middleware throws a generic error", async () => {
+    const { engine } = makeEngine([
+      async () => {
+        throw new Error("plugin broke");
+      },
+    ]);
+    await engine.createDoc("fin", { writer, content: "# T" });
+    const seen: string[][] = [];
+    engine.registerProjector({
+      id: "safe",
+      project: (input) => input.src,
+      degrade: (src, diagnostics) => {
+        seen.push(diagnostics.map((d) => d.code));
+        return `safe(${src})`;
+      },
+    });
+    const out = await engine.projection("fin", "safe", { source });
+    expect(out.ok).toBe(true);
+    expect(out.output).toBe("safe(# T)");
+    expect(seen).toEqual([["E_MIDDLEWARE_ERROR"]]);
+    const failure = out.diagnostics.find((d) => d.code === "E_MIDDLEWARE_ERROR");
+    expect(failure?.message).toContain("plugin broke");
+    // Without a degrade hook the output falls back to the raw source.
+    const text = await engine.projection("fin", "text", { source });
+    expect(text.output).toBe("# T");
+    expect(text.diagnostics.map((d) => d.code)).toEqual(["E_MIDDLEWARE_ERROR"]);
+  });
+
+  it("degrades with E_MIDDLEWARE_ERROR when projection middleware throws after next()", async () => {
+    const { engine } = makeEngine([
+      async (_ctx, next) => {
+        await next();
+        throw "not even an Error";
+      },
+    ]);
+    await engine.createDoc("fin", { writer, content: "# T" });
+    const out = await engine.projection("fin", "text", { source });
+    expect(out.output).toBe("# T");
+    expect(out.diagnostics.map((d) => d.code)).toEqual(["E_MIDDLEWARE_ERROR"]);
+    expect(out.diagnostics[0]?.message).toContain("not even an Error");
+  });
+
   it("degrades a throwing projector to raw source with E_PROJECTOR_ERROR", async () => {
     const { engine } = makeEngine();
     await engine.createDoc("fin", { writer, content: "# T" });

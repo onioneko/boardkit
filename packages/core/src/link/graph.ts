@@ -2,8 +2,9 @@ import type { Diagnostic } from "../model/diagnostic.js";
 import { diagnostic } from "../model/diagnostic.js";
 import type { ParsedDoc, Section } from "../model/doc.js";
 import type { DocId, SectionId } from "../model/ids.js";
+import { type ComplexityLimits, complexityDiagnostic } from "../parse/complexity.js";
 import type { ParseOptions } from "../parse/options.js";
-import { parseDoc } from "../parse/pipeline.js";
+import { parseDoc, parseFailedDiagnostic } from "../parse/pipeline.js";
 import { DEFAULT_MAX_DOCUMENT_BYTES, documentSizeDiagnostic } from "../parse/size.js";
 import type { Storage } from "../ports/ports.js";
 
@@ -21,7 +22,8 @@ export interface LoadedDoc {
  * Resolution status of one include edge. `duplicate` marks a later occurrence
  * of an already-included `doc#section`; it renders nothing and emits an
  * informational diagnostic. `missing-doc` also covers a target that could not
- * be read or is over the document size limit; its diagnostic says which.
+ * be read or parsed, or is over the document size limit or a complexity limit;
+ * its diagnostic says which.
  */
 export type IncludeStatus = "ok" | "missing-doc" | "missing-section" | "cycle" | "duplicate";
 
@@ -85,13 +87,22 @@ export interface LinkOptions {
    * `E_DOCUMENT_TOO_LARGE` diagnostic. Defaults to `DEFAULT_MAX_DOCUMENT_BYTES` (256 KiB).
    */
   readonly maxDocumentBytes?: number;
+  /**
+   * Documents over a markdown complexity limit are not parsed, with the same
+   * outcome as an oversized one and an `E_DOCUMENT_TOO_COMPLEX` diagnostic.
+   * Absent takes `DEFAULT_COMPLEXITY_LIMITS`; `false` turns the check off.
+   */
+  readonly complexityLimits?: ComplexityLimits | false;
 }
 
 /**
  * Resolve the include graph rooted at a board document: loads reachable docs,
  * checks include targets, detects cycles, dedupes repeated `doc#section`
  * references, and reports everything through diagnostics (fail-soft, never
- * throws for content errors).
+ * throws for content errors). A document whose parse throws is reported with
+ * an `E_PARSE_FAILED` diagnostic: as the board it contributes no documents or
+ * edges, and as an include target its edge is `missing-doc`. A read error on
+ * the board itself (other than a path outside the workspace) is rethrown.
  * @param boardDocId The document whose include graph is resolved.
  * @param storage Where documents are read from.
  * @param options Parse options used to parse each reachable document.
@@ -106,6 +117,9 @@ export async function resolveIncludes(
 ): Promise<LinkResult> {
   const parse = link.parse ?? ((_docId: DocId, src: string) => parseDoc(src, options));
   const maxDocumentBytes = link.maxDocumentBytes ?? DEFAULT_MAX_DOCUMENT_BYTES;
+  const overLimit = (id: DocId, src: string): Diagnostic | undefined =>
+    documentSizeDiagnostic(id, src, maxDocumentBytes, "read") ??
+    complexityDiagnostic(id, src, link.complexityLimits, "read");
   const docs = new Map<DocId, LoadedDoc>();
   const includes: ResolvedInclude[] = [];
   const diagnostics: Diagnostic[] = [];
@@ -131,7 +145,7 @@ export async function resolveIncludes(
     | { readonly ok: true; readonly src: string | undefined }
     | { readonly ok: false; readonly err: unknown };
   const reads = new Map<DocId, ReadResult>();
-  const parses = new Map<DocId, ParsedDoc>();
+  const parses = new Map<DocId, ParsedDoc | Diagnostic>();
   const sectionIds = new Map<DocId, ReadonlySet<SectionId>>();
 
   async function read(id: DocId): Promise<ReadResult> {
@@ -147,19 +161,24 @@ export async function resolveIncludes(
     return result;
   }
 
-  function parsedOf(id: DocId, src: string): ParsedDoc {
+  /** The document's parse, or the `E_PARSE_FAILED` diagnostic when the parser threw. */
+  function parsedOf(id: DocId, src: string): ParsedDoc | Diagnostic {
     let parsed = parses.get(id);
     if (parsed === undefined) {
-      parsed = parse(id, src);
+      try {
+        parsed = parse(id, src);
+      } catch (err) {
+        parsed = parseFailedDiagnostic(id, err);
+      }
       parses.set(id, parsed);
     }
     return parsed;
   }
 
-  function hasSection(id: DocId, src: string, sectionId: SectionId): boolean {
+  function hasSection(id: DocId, parsed: ParsedDoc, sectionId: SectionId): boolean {
     let ids = sectionIds.get(id);
     if (ids === undefined) {
-      ids = new Set(sectionsOf(parsedOf(id, src)).map((s) => s.sectionId));
+      ids = new Set(sectionsOf(parsed).map((s) => s.sectionId));
       sectionIds.set(id, ids);
     }
     return ids.has(sectionId);
@@ -184,9 +203,9 @@ export async function resolveIncludes(
       visiting.delete(docId);
       return;
     }
-    // Includes of an oversized document are diagnosed before they get here;
-    // this catches the board itself.
-    const tooLarge = documentSizeDiagnostic(docId, src, maxDocumentBytes, "read");
+    // Includes of an oversized, over-complex or unparseable document are
+    // diagnosed before they get here; this catches the board itself.
+    const tooLarge = overLimit(docId, src);
     if (tooLarge !== undefined) {
       diagnostics.push(tooLarge);
       visiting.delete(docId);
@@ -194,6 +213,11 @@ export async function resolveIncludes(
     }
 
     const parsed = parsedOf(docId, src);
+    if (!("nodes" in parsed)) {
+      diagnostics.push(parsed);
+      visiting.delete(docId);
+      return;
+    }
     docs.set(docId, { docId, parsed, src });
     order.push(docId);
 
@@ -238,16 +262,23 @@ export async function resolveIncludes(
         continue;
       }
 
-      // Too large to parse: the include stays verbatim, like a missing document.
-      const targetTooLarge = documentSizeDiagnostic(ref.docId, targetSrc, maxDocumentBytes, "read");
+      // Too large or too complex to parse, or its parse threw: the include
+      // stays verbatim, like a missing document.
+      const targetTooLarge = overLimit(ref.docId, targetSrc);
       if (targetTooLarge !== undefined) {
         includes.push(edge(docId, ref.docId, ref.sectionId, "missing-doc"));
         diagnostics.push(targetTooLarge);
         continue;
       }
+      const targetParsed = parsedOf(ref.docId, targetSrc);
+      if (!("nodes" in targetParsed)) {
+        includes.push(edge(docId, ref.docId, ref.sectionId, "missing-doc"));
+        diagnostics.push(targetParsed);
+        continue;
+      }
 
       if (ref.sectionId !== undefined) {
-        if (!hasSection(ref.docId, targetSrc, ref.sectionId)) {
+        if (!hasSection(ref.docId, targetParsed, ref.sectionId)) {
           includes.push(edge(docId, ref.docId, ref.sectionId, "missing-section"));
           diagnostics.push(
             diagnostic(

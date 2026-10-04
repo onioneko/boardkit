@@ -6,8 +6,9 @@ import { docVersion } from "../engine/version.js";
 import type { Diagnostic } from "../model/diagnostic.js";
 import type { ParsedDoc } from "../model/doc.js";
 import { asDocId, type DocId } from "../model/ids.js";
+import { type ComplexityLimits, complexityDiagnostic } from "../parse/complexity.js";
 import type { ParseOptions } from "../parse/options.js";
-import { parseDoc } from "../parse/pipeline.js";
+import { parseDoc, parseFailedDiagnostic } from "../parse/pipeline.js";
 import {
   DEFAULT_MAX_DOCUMENT_BYTES,
   documentSizeDiagnostic,
@@ -46,6 +47,13 @@ export interface ExternalWriteDeps {
    * or evented: the outcome carries an `E_DOCUMENT_TOO_LARGE` diagnostic.
    */
   readonly maxDocumentBytes?: number;
+  /**
+   * Markdown complexity limits; absent takes `DEFAULT_COMPLEXITY_LIMITS`, and
+   * `false` turns the check off. An edited file over a limit is not parsed or
+   * evented: the outcome carries an `E_DOCUMENT_TOO_COMPLEX` diagnostic. A
+   * file whose parse throws is not evented either (`E_PARSE_FAILED`).
+   */
+  readonly complexityLimits?: ComplexityLimits | false;
 }
 
 /** The outcome of handling one watch event. */
@@ -92,6 +100,18 @@ export function createExternalWriteHandler(deps: ExternalWriteDeps): ExternalWri
   const lastVersion = new Map<DocId, string>();
   const lastTree = new Map<DocId, ParsedDoc>();
   const maxDocumentBytes = deps.maxDocumentBytes ?? DEFAULT_MAX_DOCUMENT_BYTES;
+  /** The size or complexity diagnostic for a source, or `undefined` when it may be parsed. */
+  const overLimit = (docId: DocId, src: string): Diagnostic | undefined =>
+    documentSizeDiagnostic(docId, src, maxDocumentBytes, "read") ??
+    complexityDiagnostic(docId, src, deps.complexityLimits, "read");
+  /** Parse, or `undefined` when the parser throws. */
+  const tryParse = (src: string): ParsedDoc | undefined => {
+    try {
+      return parseDoc(src, deps.parseOptions);
+    } catch {
+      return undefined;
+    }
+  };
 
   const toDocId = (watchPath: string): DocId | undefined => {
     const rel = path.relative(deps.rootDir, watchPath);
@@ -103,11 +123,13 @@ export function createExternalWriteHandler(deps: ExternalWriteDeps): ExternalWri
   return {
     recordCommitted(docId, src) {
       lastVersion.set(docId, docVersion(src));
-      if (exceedsDocumentLimit(src, maxDocumentBytes)) {
-        lastTree.delete(docId);
-        return;
-      }
-      lastTree.set(docId, parseDoc(src, deps.parseOptions));
+      const parsed =
+        exceedsDocumentLimit(src, maxDocumentBytes) ||
+        complexityDiagnostic(docId, src, deps.complexityLimits, "read") !== undefined
+          ? undefined
+          : tryParse(src);
+      if (parsed === undefined) lastTree.delete(docId);
+      else lastTree.set(docId, parsed);
     },
 
     async handle(watchPath) {
@@ -130,15 +152,23 @@ export function createExternalWriteHandler(deps: ExternalWriteDeps): ExternalWri
         return { docId, suppressed: true, external: false, events: [], diagnostics: [] };
       }
 
-      // Over the size limit: not parsed, so there is nothing to diff or event.
-      // The last parsed tree stays as the baseline for the next edit that fits.
-      const tooLarge = documentSizeDiagnostic(docId, src, maxDocumentBytes, "read");
+      // Over the size or a complexity limit: not parsed, so there is nothing
+      // to diff or event. The last parsed tree stays as the baseline for the
+      // next edit that fits. A parse that throws is treated the same way.
+      const tooLarge = overLimit(docId, src);
       if (tooLarge !== undefined) {
         lastVersion.set(docId, version);
         return { docId, suppressed: false, external: true, events: [], diagnostics: [tooLarge] };
       }
 
-      const parsed = parseDoc(src, deps.parseOptions);
+      let parsed: ParsedDoc;
+      try {
+        parsed = parseDoc(src, deps.parseOptions);
+      } catch (err) {
+        lastVersion.set(docId, version);
+        const failed = parseFailedDiagnostic(docId, err);
+        return { docId, suppressed: false, external: true, events: [], diagnostics: [failed] };
+      }
       const before = lastTree.get(docId) ?? parseDoc("", deps.parseOptions);
       const diff = diffDocs(before, parsed);
       const writer = { kind: "human", id: deps.externalWriterId ?? "external" } as const;

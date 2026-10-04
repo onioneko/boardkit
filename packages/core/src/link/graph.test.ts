@@ -107,3 +107,110 @@ describe("buildReverseIndex", () => {
     ]);
   });
 });
+
+describe("resolveIncludes: parse failures and complexity limits (fail-soft)", () => {
+  const throwingParse = (bad: string) => (docId: ReturnType<typeof asDocId>, src: string) => {
+    if (docId === bad) throw new RangeError("Maximum call stack size exceeded");
+    return parseDoc(src);
+  };
+
+  it("a board whose parse throws gets E_PARSE_FAILED and contributes no edges", async () => {
+    const storage = createMemStorage();
+    await storage.writeAtomic(asDocId("board"), BOARD);
+    await storage.writeAtomic(asDocId("other"), OTHER);
+    const result = await resolveIncludes(
+      asDocId("board"),
+      storage,
+      {},
+      {
+        parse: throwingParse("board"),
+      },
+    );
+    expect(result.docs).toEqual([]);
+    expect(result.includes).toEqual([]);
+    expect(result.diagnostics.map((d) => d.code)).toEqual(["E_PARSE_FAILED"]);
+    expect(result.diagnostics[0]?.message).toContain("Maximum call stack");
+  });
+
+  it("an include target whose parse throws becomes a missing-doc edge", async () => {
+    const storage = createMemStorage();
+    await storage.writeAtomic(asDocId("board"), BOARD);
+    await storage.writeAtomic(asDocId("research/q3"), RESEARCH);
+    await storage.writeAtomic(asDocId("other"), OTHER);
+    const result = await resolveIncludes(
+      asDocId("board"),
+      storage,
+      {},
+      {
+        parse: throwingParse("research/q3"),
+      },
+    );
+    expect(result.docs.map((d) => d.docId)).toEqual(["board", "other"]);
+    expect(result.includes.map((i) => [i.toDoc, i.status])).toEqual([
+      ["research/q3", "missing-doc"],
+      ["other", "ok"],
+    ]);
+    expect(result.diagnostics.map((d) => [d.code, d.nodeId])).toEqual([
+      ["E_PARSE_FAILED", "research/q3"],
+    ]);
+  });
+
+  it("a whole-document include target whose parse throws becomes a missing-doc edge", async () => {
+    const storage = createMemStorage();
+    await storage.writeAtomic(asDocId("board"), BOARD);
+    await storage.writeAtomic(asDocId("research/q3"), RESEARCH);
+    await storage.writeAtomic(asDocId("other"), OTHER);
+    const result = await resolveIncludes(
+      asDocId("board"),
+      storage,
+      {},
+      {
+        parse: throwingParse("other"),
+      },
+    );
+    expect(result.docs.map((d) => d.docId)).toEqual(["board", "research/q3"]);
+    expect(result.includes.map((i) => [i.toDoc, i.status])).toEqual([
+      ["research/q3", "ok"],
+      ["other", "missing-doc"],
+    ]);
+    expect(result.diagnostics.map((d) => d.code)).toEqual(["E_PARSE_FAILED"]);
+  });
+
+  it("does not parse an over-complex board or include target", async () => {
+    const deep = `# D\n\n${">".repeat(8000)} x\n`;
+    const storage = createMemStorage();
+    await storage.writeAtomic(asDocId("board"), "# B\n{{include:deep}}\n{{include:other}}\n");
+    await storage.writeAtomic(asDocId("deep"), deep);
+    await storage.writeAtomic(asDocId("other"), OTHER);
+    const parsed: string[] = [];
+    const parse = (docId: ReturnType<typeof asDocId>, src: string) => {
+      parsed.push(docId);
+      return parseDoc(src);
+    };
+    const result = await resolveIncludes(asDocId("board"), storage, {}, { parse });
+    expect(parsed).toEqual(["board", "other"]);
+    expect(result.includes.map((i) => [i.toDoc, i.status])).toEqual([
+      ["deep", "missing-doc"],
+      ["other", "ok"],
+    ]);
+    expect(result.diagnostics.map((d) => d.code)).toEqual(["E_DOCUMENT_TOO_COMPLEX"]);
+
+    const asBoard = await resolveIncludes(asDocId("deep"), storage, {}, { parse });
+    expect(asBoard.docs).toEqual([]);
+    expect(asBoard.diagnostics.map((d) => d.code)).toEqual(["E_DOCUMENT_TOO_COMPLEX"]);
+
+    const off = await resolveIncludes(
+      asDocId("board"),
+      storage,
+      {},
+      {
+        complexityLimits: false,
+      },
+    );
+    expect(off.includes.map((i) => [i.toDoc, i.status])).toEqual([
+      ["deep", "missing-doc"],
+      ["other", "ok"],
+    ]);
+    expect(off.diagnostics.map((d) => d.code)).toEqual(["E_PARSE_FAILED"]);
+  });
+});

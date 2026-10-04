@@ -91,6 +91,9 @@ export type { BlockId, DocId, SectionId } from "./model/ids.js";
 // ---------------------------------------------------------------------------
 export { asBlockId, asDocId, asSectionId } from "./model/ids.js";
 export type { IncludeRef, InlineRef, SourceRef } from "./model/refs.js";
+// Markdown complexity limits (EngineOptions.complexityLimits)
+export type { ComplexityLimits } from "./parse/complexity.js";
+export { DEFAULT_COMPLEXITY_LIMITS } from "./parse/complexity.js";
 // Fence→block recognition config (EngineOptions.parseOptions / PipelineDeps.parseOptions)
 export type { ParseOptions } from "./parse/options.js";
 // Document size limit (EngineOptions.maxDocumentBytes)
