@@ -177,20 +177,26 @@ const engine = createEngine({ storage, maxDocumentBytes: 64 * 1024 });
 
 Some shapes are worse than slow. The markdown parser's work grows quadratically with how deeply
 containers nest, and a few thousand levels on one line overflow the call stack: an 8 KB line of
-`>` characters is enough. So before any parse, the engine runs a linear scan of the source
-against four limits, set by `complexityLimits` and exported as `DEFAULT_COMPLEXITY_LIMITS`:
+`>` characters is enough. Nested emphasis behaves the same way: a 36 KB paragraph of
+alternating `*a _b` openers parses for about 16 seconds and then overflows. So before any parse,
+the engine runs a linear scan of the source against five limits, set by `complexityLimits` and
+exported as `DEFAULT_COMPLEXITY_LIMITS`:
 
 | Field | Default | What it counts |
 |---|---|---|
 | `maxContainerDepth` | 32 | Container markers at the start of one line: `>`, list markers (`-`, `*`, `+`, `1.`, `1)`) and footnote definitions (`[^x]:`) |
 | `maxIndentColumns` | 160 | Columns of whitespace in one line's prefix, a tab advancing to the next multiple of 4 |
-| `maxBracketDepth` | 32 | `[` nesting in one paragraph; escapes are skipped and a blank line resets the count |
-| `maxDelimiterRun` | 64 | A run of one of `*`, `_` or `~` |
+| `maxBracketDepth` | 32 | `[` nesting in one paragraph; escapes are skipped, and a blank line or a line of only `>` markers resets the count (an empty list item does not, since it cannot end a paragraph) |
+| `maxDelimiterRun` | 64 | A run of one of `*`, `_` or `~`; a line of one such character (or `-` or a backtick) and whitespace, a thematic break or code fence, is not counted |
+| `maxEmphasisDepth` | 64 | Emphasis nesting in one paragraph, estimated from the CommonMark flanking rules: a run that can only open adds its length, a run that can only close subtracts it |
 
 A document over any limit is handled exactly like one over the size limit, with an
 `E_DOCUMENT_TOO_COMPLEX` diagnostic that gives the line, and reason `too-complex` for a rejected
-write, patch or intent. The scan does not know about code fences, so a fenced line that would be
-over a limit counts too.
+write, patch or intent. The scan does not know about code fences, so the lines inside a fence
+count like any others: a code sample that opens many `[` without closing them (for example
+`x.append('[')` on 40 lines), or that holds a long `***` or `___` run next to other text, can
+be refused. Raise the limit that refuses it if your documents need this. Recognizing fences
+instead would let input that the parser reads differently slip past the scan.
 
 The limits are on by default. Raise one, or set it to `Infinity`, if real documents need it, or
 pass `false` to turn the scan off:
@@ -200,13 +206,16 @@ const engine = createEngine({ storage, complexityLimits: { maxDelimiterRun: 200 
 ```
 
 Each field is a non-negative integer or `Infinity`; any other value, or an unknown field, throws
-a `TypeError`. The limits rule out the stack overflow and the worst nesting cost, but not every
-superlinear shape: see the table above.
+a `TypeError`. The limits rule out the known stack overflows (deep containers, brackets and
+emphasis) and the worst nesting costs, but the scan only approximates the parser, and it does
+not bound every superlinear shape: see the table above. Other input may still overflow the
+parser's stack.
 
 Whatever the limits, a parse that throws never escapes the engine. A write is rejected with
 reason `validation` and an `E_PARSE_FAILED` diagnostic. A stored document that fails to parse is
 treated as over a limit: its projection returns `ok: false`, an include of it stays verbatim, it
-contributes no include edges to scoped subscriptions, and `getBlock` treats it as absent.
+contributes no include edges to scoped subscriptions, and `getBlock` treats it as absent. The
+engine remembers the failure by content, so the document is not parsed again until it changes.
 
 The engine parses each document once per content: projections, `refGraph` and `getBlock` reuse
 the parse of a document that has not changed since it was last read, through includes too, so

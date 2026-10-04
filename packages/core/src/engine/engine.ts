@@ -252,12 +252,13 @@ export interface EngineOptions {
   readonly maxDocumentBytes?: number;
   /**
    * Bounds on markdown shapes that are costly or unsafe to parse, checked by a
-   * linear scan before any parse. Deeply nested containers are the worst
-   * case: the markdown parser's time grows quadratically with nesting depth,
-   * and a few thousand levels on one line (a few KB) overflow the call stack.
+   * linear scan before any parse. Deep nesting is the worst case: the markdown
+   * parser's time grows quadratically with the depth of nested containers or
+   * emphasis, and a few thousand levels (a few KB) overflow the call stack.
    * On by default with {@link DEFAULT_COMPLEXITY_LIMITS} (32 container markers
    * on a line, 160 columns of prefix indentation, `[` nesting 32 deep in a
-   * paragraph, delimiter runs of 64); an object overrides the fields it sets,
+   * paragraph, delimiter runs of 64, emphasis nesting 64 deep in a paragraph);
+   * an object overrides the fields it sets,
    * and `false` turns the check off. A document over any limit is treated
    * like one over {@link EngineOptions.maxDocumentBytes}, with an
    * `E_DOCUMENT_TOO_COMPLEX` diagnostic:
@@ -270,8 +271,11 @@ export interface EngineOptions {
    *   `too-complex`, and an external write of it is not evented. A full-text
    *   `write` within the limits may still replace it.
    *
-   * The limits do not make every document cheap to parse: dense inline markup
-   * within them still costs superlinear time (see the projections guide).
+   * The limits do not make every document cheap to parse: long lists and
+   * dense inline markup within them still cost superlinear time, tens of
+   * seconds near the default `maxDocumentBytes` (see the projections guide).
+   * The scan only approximates the parser, so other input may still overflow
+   * its stack; that is caught as described next.
    * Each field is a non-negative integer or `Infinity`; any other value (or
    * an unknown field) is a programming error and throws a `TypeError` at
    * construction. Whatever the limits, a parse that throws never escapes the
