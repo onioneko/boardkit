@@ -132,7 +132,13 @@ edge in it: a commit that adds, removes or retargets an `{{include:…}}`, renam
 creates, imports or removes a document. Other edits re-read nothing. The graph follows every
 commit made through the engine and every external write reported through `watch` (or
 `engine.externalWrite`). A document changed in storage behind the engine's back, with no watch,
-is seen once it is next committed or reported.
+is seen once it is next committed or reported, or once a resolution for another subscriber reads
+it.
+
+Document ids are compared exactly, case included. On a case-insensitive file system,
+`{{include:Notes}}` and a commit to `notes` touch the same file but name different documents, so
+a commit to `notes` is not delivered to a board that includes `Notes`. Spell each id the same way
+everywhere.
 
 ## Replaying from a cursor
 
