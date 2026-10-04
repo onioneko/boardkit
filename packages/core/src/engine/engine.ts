@@ -775,7 +775,8 @@ export function createEngine(opts: EngineOptions): Engine {
   const knownVersion = new Map<DocId, string>();
   /** Record what a pass for `reader` observed of `docId`; a change re-resolves its other readers. */
   function observe(docId: DocId, state: string, reader: DocId): void {
-    if (knownVersion.has(docId) && knownVersion.get(docId) !== state) markReaders(docId, reader);
+    // Absent counts as a change: nothing guarantees the other readers saw this state.
+    if (knownVersion.get(docId) !== state) markReaders(docId, reader);
     knownVersion.set(docId, state);
   }
 
@@ -862,27 +863,17 @@ export function createEngine(opts: EngineOptions): Engine {
       // One subscriber whose board cannot be read contributes no edges; it
       // must never fail the write that triggered the rebuild (or any other).
       try {
-        const resolved = await resolveIncludes(docId, opts.storage, parseOptions, linkOptions);
+        // Every document the pass reads is observed: a version, or UNLOADED
+        // when it could not be loaded. A state other than the one the index
+        // knew means the document changed behind the engine's back, and the
+        // other subscribers that read it saw the old content.
+        const resolved = await resolveIncludes(docId, opts.storage, parseOptions, {
+          ...linkOptions,
+          onRead: (read, src) =>
+            observe(read, src === undefined ? UNLOADED : docVersion(src), docId),
+        });
         const reads = new Set<DocId>([docId]);
         for (const e of resolved.includes) reads.add(e.toDoc);
-        // What this pass read: a version other than the one the index knew
-        // means the document changed behind the engine's back, and the other
-        // subscribers that read it saw the old content.
-        // Read but not loaded (missing, unreadable, over a limit) is a state
-        // of its own: a document moving between it and loaded changes edges.
-        const loaded = new Set<DocId>();
-        for (const d of resolved.docs) {
-          loaded.add(d.docId);
-          observe(d.docId, docVersion(d.src), docId);
-        }
-        // A target behind a `missing-section` or `duplicate` edge was parsed
-        // but not visited, so it is not in `docs`: only a failed load counts.
-        const unloaded = new Set<DocId>();
-        if (!loaded.has(docId)) unloaded.add(docId);
-        for (const e of resolved.includes) {
-          if (e.status === "missing-doc" && !loaded.has(e.toDoc)) unloaded.add(e.toDoc);
-        }
-        for (const doc of unloaded) observe(doc, UNLOADED, docId);
         link = { edges: resolved.includes.filter((e) => e.status === "ok"), reads };
         // An include target that could not be read (EIO, EACCES, a network
         // glitch) may read next time, and nothing would commit to tell us:

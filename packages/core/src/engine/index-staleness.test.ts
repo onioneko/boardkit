@@ -283,3 +283,31 @@ describe("R1-1: a pass sees a document change between unloaded and loaded", () =
     expect(seen).toEqual([]);
   });
 });
+
+describe("R2-1: a document a pass reads but does not visit", () => {
+  it("behind a missing-section include, loaded later by another subscriber's pass, re-resolves the first", async () => {
+    const storage = createMemStorage();
+    const { engine, seen } = watched(storage);
+    await storage.writeAtomic(asDocId("a"), "# A\n\n{{include:x#s2}}\n");
+    await storage.writeAtomic(asDocId("b"), "# B\n\n{{include:x#s2}}\n");
+    await storage.writeAtomic(asDocId("x"), "# X\n\n## s1\n\none\n");
+    await storage.writeAtomic(asDocId("y"), "# Y\n");
+    engine.subscribe("a", (evt) => seen.push(`a:${String(evt.docId)}`));
+    engine.subscribe("b", (evt) => seen.push(`b:${String(evt.docId)}`));
+    await engine.write("y", { writer, fullText: "# Y\n\n1\n" }); // x#s2 is missing-section for both
+
+    // An editor adds the section, with an include; the watch event is pending.
+    const edited = "# X\n\n## s1\n\none\n\n## s2\n\n{{include:y}}\n";
+    await storage.writeAtomic(asDocId("x"), edited);
+    // b changes shape: its pass visits the new x.
+    await engine.write("b", { writer, fullText: "# B\n\n{{include:x#s2}}\n\n## more\n" });
+    await engine.write("y", { writer, fullText: "# Y\n\n2\n" });
+    // An agent writes x keeping its shape; the late watch event is a self-echo.
+    await engine.write("x", { writer, fullText: `${edited}\nagent\n` });
+    expect((await engine.externalWrite("/ws/x.md"))?.suppressed).toBe(true);
+
+    seen.length = 0;
+    await engine.write("y", { writer, fullText: "# Y\n\n3\n" });
+    expect(seen).toEqual(expect.arrayContaining(["a:y", "b:y"]));
+  });
+});

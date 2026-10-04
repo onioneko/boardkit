@@ -78,8 +78,12 @@ const lateType: BlockType = {
 const FULL_MAX_BYTES = 600;
 
 /** `full` runs: documents may carry blocks, a `late` fence, or padding past the size limit. */
-function contentFull(rand: () => number, id: string, mayBeBig: boolean): string {
-  const base = content(rand, id);
+function contentFull(rand: () => number, id: string, mayBeBig: boolean, s3 = false): string {
+  let base = content(rand, id);
+  // Includes of `s3`, a section only pending edits add: missing-section until then.
+  if (s3 && rand() < 0.9) {
+    base += `{{include:${DOCS[Math.floor(rand() * DOCS.length)]}#s3}}\n\n`;
+  }
   const extra: string[] = [];
   if (rand() < 0.3) extra.push("```box", `id: ${id}box`, `n: ${Math.floor(rand() * 5)}`, "```", "");
   if (rand() < 0.2) extra.push("```late", `id: ${id}late`, "```", "");
@@ -102,21 +106,29 @@ function flaky(inner: MemStorage): { storage: Storage; failing: Set<string> } {
   };
 }
 
-type Mode = "v1" | "full";
+type Mode = "v1" | "full" | "pending";
 
 /**
  * One seeded run. `v1` is the original generator, kept unchanged so that the
  * seeds a review found keep replaying the same steps. `full` adds removal and
  * same-bytes restore, out-of-band edits under an engine write, patches and
  * intents, a block registered mid-run, documents past the size limit,
- * interleaved writes, and transient read errors.
+ * interleaved writes, and transient read errors. `pending` adds to `full`
+ * edits made in storage and left unreported for one or more steps, as a watch
+ * event still in flight, so other subscribers' passes can read them first.
+ * Checks run only while no edit is pending: until it is reported or
+ * committed, the engine cannot know of it. They also run on only some steps
+ * (and always at the end): a check's probes commit every document, which
+ * would otherwise reset what the engine knows of each one every step.
  */
 async function run(seed: number, steps: number, mode: Mode = "v1"): Promise<void> {
   const rand = prng(seed);
   const storage = createMemStorage();
   const { storage: engineStorage, failing } = flaky(storage);
-  const blocks: BlockType[] = mode === "full" ? [boxType] : [];
-  const limits = mode === "full" ? { maxDocumentBytes: FULL_MAX_BYTES } : {};
+  const blocks: BlockType[] = mode === "v1" ? [] : [boxType];
+  const limits = mode === "v1" ? {} : { maxDocumentBytes: FULL_MAX_BYTES };
+  /** Documents edited in storage whose watch event has not arrived yet. */
+  const pending = new Set<string>();
   const engine = createEngine({
     storage: engineStorage,
     clock,
@@ -162,9 +174,15 @@ async function run(seed: number, steps: number, mode: Mode = "v1"): Promise<void
         unsubscribe(id);
       }
     } else {
+      if (mode === "pending") await settlePending();
       await fullStep(id, label);
     }
-    await check(label);
+    if (mode !== "pending") await check(label);
+    else if (pending.size === 0 && rand() < 0.1) await check(label);
+  }
+  if (mode === "pending") {
+    await settlePending(true);
+    await check(`${mode} seed ${seed} end`);
   }
   await engine.close();
 
@@ -184,11 +202,38 @@ async function run(seed: number, steps: number, mode: Mode = "v1"): Promise<void
     delivered.delete(asDocId(id));
   }
 
+  /** Each pending edit's watch event arrives now or later, sometimes after an engine write. */
+  async function settlePending(all = false): Promise<void> {
+    for (const doc of [...pending]) {
+      if (!all && rand() < 0.6) continue; // still in flight
+      const src = await storage.read(asDocId(doc));
+      if (src !== undefined && rand() < 0.6) {
+        // An agent writes the document first, keeping the editor's shape.
+        await engine.write(doc, { writer, fullText: probed(src) });
+      }
+      await engine.externalWrite(`/ws/${doc}.md`);
+      pending.delete(doc);
+    }
+  }
+
   async function fullStep(id: string, label: string): Promise<void> {
-    const op = Math.floor(rand() * 16);
+    // `pending` mode draws 16–19 as a pending edit: a quarter of its steps.
+    const op = Math.min(16, Math.floor(rand() * (mode === "pending" ? 20 : 16)));
     const src = await storage.read(asDocId(id));
+    if (op === 16) {
+      // Edited in storage; the watch event is still in flight. Usually an
+      // editor's edit that adds the section `s3` (which the generator never
+      // writes, so includes of it resolve as missing-section until then).
+      const edit =
+        src !== undefined && !src.includes("## s3") && rand() < 0.7
+          ? `${src}\n## s3\n\n{{include:${pickDoc()}}}\n`
+          : contentFull(rand, id, true, mode === "pending");
+      await storage.writeAtomic(asDocId(id), edit);
+      pending.add(id);
+      return;
+    }
     if (op <= 1) {
-      const text = contentFull(rand, id, false);
+      const text = contentFull(rand, id, false, mode === "pending");
       const r =
         src === undefined
           ? await engine.createDoc(id, { writer, content: text })
@@ -198,7 +243,7 @@ async function run(seed: number, steps: number, mode: Mode = "v1"): Promise<void
       if (src === undefined) {
         const r = await engine.importDoc(id, {
           writer,
-          content: contentFull(rand, id, true),
+          content: contentFull(rand, id, true, mode === "pending"),
           ignoreSizeLimit: true,
         });
         expect(r.ok, label).toBe(true);
@@ -206,7 +251,7 @@ async function run(seed: number, steps: number, mode: Mode = "v1"): Promise<void
     } else if (op === 3) {
       if (src !== undefined) expect((await engine.removeDoc(id, { writer })).ok, label).toBe(true);
     } else if (op === 4) {
-      await storage.writeAtomic(asDocId(id), contentFull(rand, id, true));
+      await storage.writeAtomic(asDocId(id), contentFull(rand, id, true, mode === "pending"));
       await engine.externalWrite(`/ws/${id}.md`);
     } else if (op === 5) {
       await storage.delete?.(asDocId(id));
@@ -226,7 +271,7 @@ async function run(seed: number, steps: number, mode: Mode = "v1"): Promise<void
       // An edit in storage the watcher has not reported, then an engine write
       // that keeps its shape; the report (a self-echo by then) may follow.
       if (src !== undefined) {
-        const pending = contentFull(rand, id, false);
+        const pending = contentFull(rand, id, false, mode === "pending");
         await storage.writeAtomic(asDocId(id), pending);
         await engine.write(id, { writer, fullText: probed(pending) });
         if (rand() < 0.5) await engine.externalWrite(`/ws/${id}.md`);
@@ -248,8 +293,11 @@ async function run(seed: number, steps: number, mode: Mode = "v1"): Promise<void
     } else if (op === 13) {
       const other = pickDoc();
       await Promise.all([
-        engine.write(id, { writer, fullText: contentFull(rand, id, false) }),
-        engine.write(other, { writer, fullText: contentFull(rand, other, false) }),
+        engine.write(id, { writer, fullText: contentFull(rand, id, false, mode === "pending") }),
+        engine.write(other, {
+          writer,
+          fullText: contentFull(rand, other, false, mode === "pending"),
+        }),
       ]);
     } else {
       // A transient read error during a rebuild, which a write to another
@@ -333,10 +381,17 @@ const REGRESSION_SEEDS = [26, 41, 158, 216, 499, 606, 805, 893];
 const FULL_REGRESSION_SEEDS = [900];
 
 /**
+ * Seeds of the `pending` generator a review's finding fails (R2-1, a
+ * document read only behind a missing-section include), at 60 steps.
+ */
+const PENDING_REGRESSION_SEEDS = [914];
+
+/**
  * How many `full` seeds CI runs, and how many steps each. A step takes a few
  * milliseconds. Some failures need many steps to set up (seed 900 first fails
- * at step 40), so CI runs 60. Set BOARDKIT_SEQUENCE_SEEDS and
- * BOARDKIT_SEQUENCE_STEPS for a longer soak (for example 3000 seeds).
+ * at step 40), so CI runs 60. The `pending` run uses twice the seeds. Set
+ * BOARDKIT_SEQUENCE_SEEDS and BOARDKIT_SEQUENCE_STEPS for a longer soak (for
+ * example 3000 seeds).
  */
 const FULL_SEEDS = Number(process.env.BOARDKIT_SEQUENCE_SEEDS ?? 200);
 const FULL_STEPS = Number(process.env.BOARDKIT_SEQUENCE_STEPS ?? 60);
@@ -345,6 +400,11 @@ describe("the incremental reverse index and the seeded parse cache match a rebui
   for (const seed of FULL_REGRESSION_SEEDS) {
     it(`regression seed ${seed} (full, 60 steps)`, async () => {
       await run(seed, 60, "full");
+    });
+  }
+  for (const seed of PENDING_REGRESSION_SEEDS) {
+    it(`regression seed ${seed} (pending, 60 steps)`, async () => {
+      await run(seed, 60, "pending");
     });
   }
   for (const seed of REGRESSION_SEEDS) {
@@ -358,6 +418,16 @@ describe("the incremental reverse index and the seeded parse cache match a rebui
       for (let seed = 1; seed <= FULL_SEEDS; seed += 1) await run(seed, FULL_STEPS, "full");
     },
     Math.max(120_000, FULL_SEEDS * FULL_STEPS * 10),
+  );
+  // Pending runs check only some steps, so they are cheaper: twice the seeds.
+  it(
+    `random runs, ${2 * FULL_SEEDS} seeds of ${FULL_STEPS} steps, with pending watch events`,
+    async () => {
+      for (let seed = 1; seed <= 2 * FULL_SEEDS; seed += 1) {
+        await run(seed, FULL_STEPS, "pending");
+      }
+    },
+    Math.max(120_000, 2 * FULL_SEEDS * FULL_STEPS * 10),
   );
 });
 
