@@ -124,9 +124,21 @@ export async function resolveIncludes(
   const parse = link.parse ?? ((_docId: DocId, src: string) => parseDoc(src, options));
   const maxDocumentBytes = link.maxDocumentBytes ?? DEFAULT_MAX_DOCUMENT_BYTES;
   const complexityLimits = resolveComplexityLimits(link.complexityLimits);
-  const overLimit = (id: DocId, src: string): Diagnostic | undefined =>
-    documentSizeDiagnostic(id, src, maxDocumentBytes, "read") ??
-    complexityDiagnostic(id, src, complexityLimits, "read");
+  // The limit checks once per document per pass, like its read and parse:
+  // the complexity scan is linear in the document, and a document named by
+  // many includes would otherwise be scanned once per include.
+  const limitChecks = new Map<DocId, Diagnostic | null>();
+  const overLimit = (id: DocId, src: string): Diagnostic | undefined => {
+    let checked = limitChecks.get(id);
+    if (checked === undefined) {
+      checked =
+        documentSizeDiagnostic(id, src, maxDocumentBytes, "read") ??
+        complexityDiagnostic(id, src, complexityLimits, "read") ??
+        null;
+      limitChecks.set(id, checked);
+    }
+    return checked ?? undefined;
+  };
   const docs = new Map<DocId, LoadedDoc>();
   const includes: ResolvedInclude[] = [];
   const diagnostics: Diagnostic[] = [];

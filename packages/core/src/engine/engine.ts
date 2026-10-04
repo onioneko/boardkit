@@ -31,7 +31,7 @@ import {
   resolveComplexityLimits,
 } from "../parse/complexity.js";
 import type { ParseOptions } from "../parse/options.js";
-import { parseDoc, parseFailedDiagnostic } from "../parse/pipeline.js";
+import { parseDoc } from "../parse/pipeline.js";
 import {
   documentSizeDiagnostic,
   exceedsDocumentLimit,
@@ -1059,8 +1059,8 @@ export function createEngine(opts: EngineOptions): Engine {
         };
       }
       const id = validated.id;
-      const src = await opts.storage.read(id);
-      if (src === undefined) {
+      const stored = await opts.storage.read(id);
+      if (stored === undefined) {
         return {
           ok: false,
           output: emptyOutput,
@@ -1068,29 +1068,24 @@ export function createEngine(opts: EngineOptions): Engine {
           versions: {},
         };
       }
-      // A document over the size or a complexity limit is never parsed
-      // (fail-soft: diagnosed).
-      const tooLarge =
-        documentSizeDiagnostic(id, src, maxDocumentBytes, "read") ?? complexityOf(id, src);
+      // A document over the size limit is never parsed (fail-soft: diagnosed).
+      const tooLarge = documentSizeDiagnostic(id, stored, maxDocumentBytes, "read");
       if (tooLarge !== undefined) {
         return { ok: false, output: emptyOutput, diagnostics: [tooLarge], versions: {} };
       }
 
-      // PARSE through the cache: one ParsedDoc per content hash, which LINK
-      // then reuses for the board. A parse that throws is diagnosed, not
-      // propagated.
-      let doc: ParsedDoc;
-      try {
-        doc = parseCached(id, src);
-      } catch (err) {
-        return {
-          ok: false,
-          output: emptyOutput,
-          diagnostics: [parseFailedDiagnostic(id, err)],
-          versions: {},
-        };
-      }
+      // LINK checks the complexity limits and PARSEs every reachable document,
+      // the board first, once each per pass (through the parse cache). A
+      // board it could not load (over a complexity limit, a parse that threw,
+      // or gone since the read above) fails the projection with LINK's
+      // diagnostic for it.
       const link = await resolveIncludes(id, opts.storage, parseOptions, linkOptions);
+      const board = link.docs[0];
+      if (board === undefined || board.docId !== id) {
+        return { ok: false, output: emptyOutput, diagnostics: [...link.diagnostics], versions: {} };
+      }
+      const doc = board.parsed;
+      const src = board.src;
       const diagnostics: Diagnostic[] = [...doc.diagnostics, ...link.diagnostics];
 
       // RESOLVE: a separate, per-projection stage after MERGE. It re-runs
