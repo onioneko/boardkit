@@ -144,6 +144,10 @@ document larger than `maxDocumentBytes`: **256 KiB** of UTF-8 by default, export
   - `getBlock` treats it as absent, and patches and intents against it are rejected with reason
     `too-large`;
   - `getDoc` still returns its raw source.
+
+  When the storage implements `Storage.size`, a stored document over the limit is diagnosed from
+  its size, before it is read (see
+  [Sizing a document before reading it](storage-and-watch.md#sizing-a-document-before-reading-it)).
 - A full-text `write` that fits may replace it. The engine never parsed the old version, so it
   cannot diff against it: the write's events start with `doc.removed` and `doc.created`, followed
   by the new content's events as if it were created from empty. A consumer that replays the log
@@ -236,7 +240,9 @@ engine remembers the failure by content, so the document is not parsed again unt
 
 The engine parses each document once per content: projections, `refGraph` and `getBlock` reuse
 the parse of a document that has not changed since it was last read, through includes too, so
-repeated projections do not pay for parsing again. The cache of parses is bounded (at most
+repeated projections do not pay for parsing again. A write keeps the parse it made of the content
+it stored, so the next read of a document the engine wrote parses nothing, and content already
+parsed is not scanned against the complexity limits again. The cache of parses is bounded (at most
 16 MiB of source), and block attrs in a cached parse are frozen. A block hook that modifies its
 attrs throws, and that block falls back to its verbatim source (`E_BLOCK_HOOK_ERROR`). A
 projector that modifies `input.doc` throws, and the projection falls back to the raw source

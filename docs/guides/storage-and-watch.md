@@ -54,8 +54,8 @@ Durability characteristics:
 
 ### Containment
 
-Every path built from a document id stays inside `root`. `read`, `writeAtomic`, `delete` and the
-default lock refuse, after checking only file metadata (no document is read or written):
+Every path built from a document id stays inside `root`. `read`, `size`, `writeAtomic`, `delete`
+and the default lock refuse, after checking only file metadata (no document is read or written):
 
 - an id that is not a valid document id (`..`, `.` or empty segments, a leading `/`, backslashes,
   a trailing `.md`) with an error whose `code` is `"E_INVALID_ID"`;
@@ -70,6 +70,24 @@ Containment is checked before each operation. A process that can already write i
 swaps a symlink between the check and the access is outside the threat model: the guarantee holds
 against document content and API input, not against local users with write access to the
 workspace. Keep `root` writable only by processes you trust.
+
+## Sizing a document before reading it
+
+`Storage.size(docId)` is optional. It returns a document's stored size in bytes without reading
+it, or `undefined` when the document is missing or its size is unknown. Both shipped adapters
+implement it (`createFsStorage` with a `stat`).
+
+When it is there, the engine calls it before reading a document it may have to refuse: the board
+of a projection, every document an include graph reaches, `getBlock`, and the document a patch or
+an intent targets. A document whose size is over `maxDocumentBytes` is diagnosed with
+`E_DOCUMENT_TOO_LARGE` exactly as if it had been read, but its bytes never enter memory. A size
+within the limit is followed by the usual read, which measures the source itself. A storage
+without `size`, a `size` that returns `undefined`, and a `size` that throws all fall back to
+reading and measuring. The engine never calls `size` when `maxDocumentBytes` is `Infinity`.
+
+A custom storage that implements `size` must not report more bytes than the UTF-8 encoding of
+the source its `read` returns, because the engine refuses a document on its size alone. The byte
+size of a file read as UTF-8 meets this.
 
 ## Watching for external edits
 

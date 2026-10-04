@@ -126,6 +126,14 @@ const unsubscribe = engine.subscribe("fin", (evt) => {
 unsubscribe();
 ```
 
+The engine keeps the include graph behind scoped delivery up to date as documents change. It
+re-reads a subscribed board's include closure only when a commit may have changed an include
+edge in it: a commit that adds, removes or retargets an `{{include:…}}`, renames a section, or
+creates, imports or removes a document. Other edits re-read nothing. The graph follows every
+commit made through the engine and every external write reported through `watch` (or
+`engine.externalWrite`). A document changed in storage behind the engine's back, with no watch,
+is seen once it is next committed or reported.
+
 ## Replaying from a cursor
 
 `engine.events({ afterSeq })` returns an async iterable that replays records with `seq >
