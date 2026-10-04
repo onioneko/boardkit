@@ -35,7 +35,7 @@ export type { BuildMergedTreeOptions } from "../link/merge.js";
 export { buildMergedTree, resolveMergedValues } from "../link/merge.js";
 export { validateFrontmatter } from "../model/frontmatter.js";
 export { extractBlocks } from "../parse/blocks.js";
-export { documentComplexityDiagnostic } from "../parse/complexity.js";
+export { documentComplexityDiagnostic, fencedCodeLines } from "../parse/complexity.js";
 // ---------------------------------------------------------------------------
 // Parse machinery
 // ---------------------------------------------------------------------------

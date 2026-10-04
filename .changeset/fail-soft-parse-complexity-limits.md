@@ -27,5 +27,5 @@ Parsing is now fail-soft, and a new complexity guard, on by default, refuses the
   - `ComplexityLimits` and `DEFAULT_COMPLEXITY_LIMITS`;
   - the `complexityLimits` field on the exported `PipelineDeps` (`applyIntent`) and `ExternalWriteDeps` (`createExternalWriteHandler`). An invalid value throws a `TypeError`, as in `createEngine`.
 - **New exports from `@onioneko/boardkit-core/internal`:**
-  - `documentComplexityDiagnostic` and `parseFailedDiagnostic`;
+  - `documentComplexityDiagnostic`, `fencedCodeLines` and `parseFailedDiagnostic`;
   - `LinkOptions.complexityLimits`, for `resolveIncludes`.
