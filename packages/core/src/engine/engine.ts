@@ -678,6 +678,7 @@ const indexSnapshotReaders = new WeakMap<
  * compare it with an index built from scratch over current storage.
  * @param engine An engine from {@link createEngine}.
  * @returns The index, or an empty map for an object that is not one.
+ * @internal
  */
 export async function includeIndexSnapshot(
   engine: Engine,

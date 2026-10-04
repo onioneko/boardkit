@@ -23,6 +23,21 @@ import { createEngine, includeIndexSnapshot } from "./engine.js";
  *
  * This harness and its snapshot oracle are the bar for any future incremental
  * include index.
+ *
+ * CI runs a short random range: 50 `full` seeds and 200 `pending` seeds of 60
+ * steps (about 30 s), plus the pinned regression seeds. The known bugs are
+ * carried by those seeds and the deterministic tests. For a long soak, set:
+ *
+ * - `BOARDKIT_SEQUENCE_SEEDS`: `full` seeds (default 50);
+ * - `BOARDKIT_SEQUENCE_PENDING_SEEDS`: `pending` seeds (default 200);
+ * - `BOARDKIT_SEQUENCE_STEPS`: steps per seed (default 60).
+ *
+ * Before touching the include index, soak at least 2000 seeds of 60 steps in
+ * both modes:
+ *
+ *     BOARDKIT_SEQUENCE_SEEDS=2000 BOARDKIT_SEQUENCE_PENDING_SEEDS=2000 \
+ *       pnpm --filter @onioneko/boardkit-core exec vitest run \
+ *       src/engine/reverse-index-sequence.test.ts
  */
 
 const DOCS = ["a", "b", "c", "d", "e"] as const;
@@ -411,13 +426,13 @@ const FULL_REGRESSION_SEEDS = [900, 194];
 const PENDING_REGRESSION_SEEDS = [914];
 
 /**
- * How many `full` seeds CI runs, and how many steps each. A step takes a few
- * milliseconds. Some failures need many steps to set up (seed 900 first fails
- * at step 40), so CI runs 60. The `pending` run uses twice the seeds. Set
- * BOARDKIT_SEQUENCE_SEEDS and BOARDKIT_SEQUENCE_STEPS for a longer soak (for
- * example 3000 seeds).
+ * How many `full` and `pending` seeds run, and how many steps each (see the
+ * file header for the soak knobs). A `full` seed takes about 0.3 s and a
+ * `pending` seed about 0.07 s. Some failures need many steps to set up (seed
+ * 900 first fails at step 40), so the default is 60.
  */
-const FULL_SEEDS = Number(process.env.BOARDKIT_SEQUENCE_SEEDS ?? 200);
+const FULL_SEEDS = Number(process.env.BOARDKIT_SEQUENCE_SEEDS ?? 50);
+const PENDING_SEEDS = Number(process.env.BOARDKIT_SEQUENCE_PENDING_SEEDS ?? 200);
 const FULL_STEPS = Number(process.env.BOARDKIT_SEQUENCE_STEPS ?? 60);
 /** Seeds per test. */
 const CHUNK = 50;
@@ -450,9 +465,9 @@ describe("the reverse include index and the seeded parse cache match a rebuild",
       Math.max(60_000, CHUNK * FULL_STEPS * 20),
     );
   }
-  // Pending runs check delivery on only some steps, so they are cheaper: twice the seeds.
-  for (let first = 1; first <= 2 * FULL_SEEDS; first += CHUNK) {
-    const last = Math.min(2 * FULL_SEEDS, first + CHUNK - 1);
+  // Pending runs check delivery on only some steps, so they are cheaper.
+  for (let first = 1; first <= PENDING_SEEDS; first += CHUNK) {
+    const last = Math.min(PENDING_SEEDS, first + CHUNK - 1);
     it(
       `random runs, seeds ${first}–${last} of ${FULL_STEPS} steps, with pending watch events`,
       async () => {
