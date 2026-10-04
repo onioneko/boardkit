@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { AnyBlockType } from "../blocks/types.js";
 import { applyIntent as applyIntentRoute, type Intent } from "../intent/apply.js";
 import {
@@ -312,6 +313,15 @@ export interface EngineOptions {
    * the {@link Intent}) overrides this.
    */
   readonly strictExpected?: boolean;
+  /**
+   * The engine's part of every commit id it mints (`CommitInfo.id` is
+   * `<docId>@<version>#<prefix>.<n>`, with `n` counting this engine's commits
+   * from 1). Absent, each engine draws a random 12-hex-digit prefix, so ids
+   * stay unique in a log that several engines or restarts append to. Pin it
+   * for reproducible ids (in tests, for example); a pinned prefix must then
+   * differ between engines that share an event log, or their ids collide.
+   */
+  readonly commitIdPrefix?: string;
 }
 
 /** The result of one projection: output, diagnostics, and committed versions of reachable docs. */
@@ -860,13 +870,15 @@ export function createEngine(opts: EngineOptions): Engine {
   const writeMiddlewares: WriteMiddleware[] = [...(opts.middleware?.write ?? [])];
   const projectionMiddlewares: ProjectionMiddleware[] = [...(opts.middleware?.projection ?? [])];
 
-  // Commit ids: `<docId>@<version>#<n>`, n counting this engine's commits
-  // (engine writes and handled external writes alike) from 1. No clock or
-  // randomness, so the same writes mint the same ids (B8).
+  // Commit ids: `<docId>@<version>#<prefix>.<n>`, n counting this engine's
+  // commits (engine writes and handled external writes alike) from 1. The
+  // prefix tells engines apart in a shared or reopened log: random unless the
+  // host pins it, in which case the same writes mint the same ids (B8).
+  const commitIdPrefix = opts.commitIdPrefix ?? randomUUID().replaceAll("-", "").slice(0, 12);
   let commitCount = 0;
   const commitId = (docId: DocId, version: string): string => {
     commitCount += 1;
-    return `${docId}@${version}#${commitCount}`;
+    return `${docId}@${version}#${commitIdPrefix}.${commitCount}`;
   };
 
   const deps: PipelineDeps = {

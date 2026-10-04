@@ -48,16 +48,21 @@ Every event carries `commit`, which says which commit appended it and where in t
 sits:
 
 ```ts
-{ seq: 8, t: "…", type: "section.added", docId: "fin", commit: { id: "fin@sha256-…#12", index: 1, size: 3 }, by: { … } }
+{ seq: 8, t: "…", type: "section.added", docId: "fin", commit: { id: "fin@3f9c…e1#a41c0d9be2f7.12", index: 1, size: 3 }, by: { … } }
 ```
 
 - `id` is shared by every event of one commit: a write, a patch, an intent, a create, an
-  import, a remove, or one handled external write. It is `<docId>@<version>#<n>`, where
-  `version` is the committed content's hash (the removed content's, for `doc.removed`) and `n`
-  counts the engine's commits from 1. There is no clock or randomness in it, so the same writes
-  give the same ids.
+  import, a remove, or one handled external write. It is unique per event log, so group
+  records by it. Its shape is `<docId>@<version>#<prefix>.<n>`: `version` is the committed
+  content's hash, 64 hex digits (the removed content's, for `doc.removed`); `prefix` identifies
+  the engine; and `n` counts that engine's commits from 1. Treat the id as opaque.
 - `index` is the event's position in the commit, from 0, and `size` is the commit's event count.
   The event with `index === size - 1` closes the commit.
+
+The prefix is random for each engine, so ids stay unique when the engine restarts or when
+several engines append to one log. To get reproducible ids, in tests for example, pin it with
+`createEngine({ commitIdPrefix: "test" })`. Engines that share a log must then use different
+prefixes.
 
 A subscriber that re-renders on change can wait for the closing event instead of debouncing:
 
@@ -67,9 +72,14 @@ engine.subscribe("fin", (evt) => {
 });
 ```
 
-The fs event log stores the field, so a replay groups the same way. Two limits apply. `n`
-restarts with each engine, so across restarts group by consecutive records rather than by `id`
-alone. A record from an older log, or one a host appended by hand, has no `commit`.
+This works because every event of a commit has the same `docId`, so a subscriber scoped to a
+document always sees whole commits.
+
+The records of one commit keep their order, but they are not always adjacent. Commits on
+different documents run at the same time, so their records can interleave in the log, for
+example `b:0 a:0 b:1 a:1`. A reader of the whole log groups by `id`, not by position. The fs
+event log stores the field, so a replay groups the same way. A record from an older log, or one a
+host appended by hand, has no `commit`.
 
 ## Importing a document
 

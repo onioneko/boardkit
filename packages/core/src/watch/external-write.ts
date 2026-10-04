@@ -19,7 +19,7 @@ import {
   exceedsDocumentLimit,
 } from "../parse/size.js";
 import type { Clock, EventDraft, EventRecord, Storage } from "../ports/ports.js";
-import { stampCommit } from "../write/pipeline.js";
+import { defaultCommitId, stampCommit } from "../write/pipeline.js";
 
 /**
  * External write handling: humans editing files directly bypass the pipeline by
@@ -64,7 +64,8 @@ export interface ExternalWriteDeps {
   /**
    * Mints the commit id stamped on the events of one external write (see
    * `CommitInfo`). The engine shares its own counter here, so external and
-   * engine commits never share an id; absent, the id is `<docId>@<version>`.
+   * engine commits never share an id; absent, `defaultCommitId` gives each
+   * external write a random, unique id.
    */
   readonly commitId?: (docId: DocId, version: string) => string;
 }
@@ -195,7 +196,7 @@ export function createExternalWriteHandler(deps: ExternalWriteDeps): ExternalWri
       const records: EventRecord[] = [];
       if (sink !== undefined && drafts.length > 0) {
         // One external write is one commit: its events share a commit id.
-        const id = deps.commitId?.(docId, version) ?? `${docId}@${version}`;
+        const id = (deps.commitId ?? defaultCommitId)(docId, version);
         for (const draft of stampCommit(drafts, id)) records.push(await sink.append(draft));
       }
 

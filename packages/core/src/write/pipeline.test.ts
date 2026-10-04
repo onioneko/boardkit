@@ -806,10 +806,16 @@ describe("complexityLimits validation", () => {
 });
 
 describe("commit info on emitted events", () => {
-  it("defaults the commit id to docId@version without a commitId minter", async () => {
+  it("without a commitId minter, still gives every commit its own id", async () => {
     const d = deps();
-    const r = successOf(await createDoc(d, asDocId("c"), writer, "# C\n"));
-    expect(r.events?.map((e) => e.commit)).toEqual([{ id: `c@${r.version}`, index: 0, size: 1 }]);
+    const created = successOf(await createDoc(d, asDocId("c"), writer, "# C\n"));
+    const removed = successOf(await removeDoc(d, asDocId("c"), writer));
+    // Same docId and version (remove stamps the removed bytes' hash): ids must differ.
+    expect(removed.version).toBe(created.version);
+    const [a, b] = [created.events?.[0]?.commit, removed.events?.[0]?.commit];
+    expect(a).toMatchObject({ index: 0, size: 1 });
+    expect(a?.id.startsWith(`c@${created.version}#`)).toBe(true);
+    expect(a?.id).not.toBe(b?.id);
   });
 
   it("asks deps.commitId once per commit and stamps every event with it", async () => {
@@ -889,7 +895,7 @@ describe("importDoc (restore bytes verbatim)", () => {
         docId: "bad",
         by: writer,
         imported: true,
-        commit: { id: `bad@${r.version}`, index: 0, size: 1 },
+        commit: { id: expect.stringMatching(`^bad@${r.version}#`), index: 0, size: 1 },
       },
     ]);
   });

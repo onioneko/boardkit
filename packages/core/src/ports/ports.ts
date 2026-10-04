@@ -63,19 +63,21 @@ export interface Lock {
 /**
  * Where an event sits in the commit that appended it. One commit (a write, a
  * patch, an intent, a create, an import, a remove, or one handled external
- * write) appends its events one after another; each carries the same `id`,
- * its position `index` (0-based), and the commit's event count `size`. The
- * event with `index === size - 1` closes the commit, so a subscriber can
- * re-render once per commit, and a log reader can group records exactly.
+ * write) appends its events in order; each carries the same `id`, its
+ * position `index` (0-based), and the commit's event count `size`. The event
+ * with `index === size - 1` closes the commit. Commits on different documents
+ * can run at the same time, so their records may interleave in the log: group
+ * records by `id`, not by position. Within one commit the records keep their
+ * order. Every event of a commit has the same `docId`, so a subscriber scoped
+ * to a document sees whole commits.
  */
 export interface CommitInfo {
   /**
-   * The commit's id: `<docId>@<version>#<n>`, where `version` is the committed
-   * content's hash (the removed content's for `doc.removed`) and `n` counts
-   * the engine's commits from 1. Unique within one engine instance and the
-   * same for the same sequence of writes (no clock or randomness); a new
-   * engine starts counting again, so across restarts group by consecutive
-   * records rather than by id alone.
+   * The commit's id, unique per event log: `<docId>@<version>#<prefix>.<n>`
+   * from an engine, where `version` is the committed content's hash (the
+   * removed content's for `doc.removed`), `prefix` identifies the engine
+   * (random unless `EngineOptions.commitIdPrefix` pins it), and `n` counts
+   * that engine's commits from 1. Treat it as opaque except for grouping.
    */
   readonly id: string;
   /** The event's position in its commit, from 0. */

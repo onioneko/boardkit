@@ -110,8 +110,8 @@ Two things make external-write handling safe:
   source with a diagnostic rather than crashing the host (see
   [Projector exceptions](projections.md#projector-exceptions)).
 
-The events of one external write share one commit id (`commit: { id, index, size }`), counted
-with the engine's own commits, so a subscriber can group them as it groups a pipeline commit
+The events of one external write share one commit id (`commit: { id, index, size }`), minted
+like the engine's own commit ids, so a subscriber can group them as it groups a pipeline commit
 (see [Commit boundaries](events.md#commit-boundaries)).
 
 An external edit that leaves the file over the engine's document size limit (`maxDocumentBytes`,

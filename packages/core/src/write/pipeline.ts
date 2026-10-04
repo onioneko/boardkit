@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import equal from "fast-deep-equal";
 import type { AnyBlockType } from "../blocks/types.js";
 import { diffDocs } from "../diff/diff.js";
@@ -163,11 +164,26 @@ export interface PipelineDeps {
    */
   readonly complexityLimits?: ComplexityLimits | false;
   /**
-   * Mints the {@link CommitInfo.id} stamped on every event of one commit. The
-   * engine passes a per-engine counter (`<docId>@<version>#<n>`); absent, the
-   * id is `<docId>@<version>`, which is not unique when content repeats.
+   * Mints the {@link CommitInfo.id} stamped on every event of one commit,
+   * called once per commit. The engine passes its own minter
+   * (`<docId>@<version>#<prefix>.<n>`, see `EngineOptions.commitIdPrefix`).
+   * Absent, {@link defaultCommitId} gives each commit a random id, unique but
+   * not reproducible; pass a minter for deterministic ids.
    */
   readonly commitId?: (docId: DocId, version: string) => string;
+}
+
+/**
+ * The commit id used when no `commitId` minter is configured:
+ * `<docId>@<version>#<uuid>`. `docId@version` alone does not identify a
+ * commit (a create and the remove of the same bytes share it, and so do
+ * A→B→A edits), so a random suffix makes every id unique.
+ * @param docId The committed document.
+ * @param version The committed (or, for a removal, removed) content's hash.
+ * @returns A fresh, unique commit id.
+ */
+export function defaultCommitId(docId: DocId, version: string): string {
+  return `${docId}@${version}#${randomUUID()}`;
 }
 
 /**
@@ -276,7 +292,7 @@ async function emit(
   const sink = deps.storage.defaultEventSink?.();
   if (sink === undefined) return { records: [], appended: false };
   if (drafts.length === 0) return { records: [], appended: true };
-  const id = deps.commitId?.(docId, version) ?? `${docId}@${version}`;
+  const id = (deps.commitId ?? defaultCommitId)(docId, version);
   const records: EventRecord[] = [];
   for (const draft of stampCommit(drafts, id)) records.push(await sink.append(draft));
   return { records, appended: true };

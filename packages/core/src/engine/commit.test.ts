@@ -31,7 +31,12 @@ const before = "# A\n\n```status\nid: s\nvalue: open\n```\n\n## Gone\n\ntext\n";
 // One write: a section added, a section removed, a status changed.
 const after = "# A\n\n```status\nid: s\nvalue: done\n```\n\n## New\n\ntext\n";
 
-/** Group records by commit id, asserting each group is contiguous and self-consistent. */
+/**
+ * Group records by commit id, asserting each group is self-consistent: its
+ * records keep their order (indexes 0..size-1 in seq order) and its size is
+ * right. Records of different commits may interleave, so groups need not be
+ * contiguous in the log.
+ */
 function assertCommitGroups(records: readonly EventRecord[]): Map<string, EventRecord[]> {
   const groups = new Map<string, EventRecord[]>();
   for (const r of records) {
@@ -45,9 +50,6 @@ function assertCommitGroups(records: readonly EventRecord[]): Map<string, EventR
     const size = group.length;
     expect(group.map((r) => r.commit?.index)).toEqual([...Array(size).keys()]);
     expect(group.every((r) => r.commit?.size === size)).toBe(true);
-    // Contiguous in the log: seqs are consecutive.
-    const seqs = group.map((r) => r.seq);
-    expect(seqs).toEqual(seqs.map((_, i) => (seqs[0] ?? 0) + i));
   }
   return groups;
 }
@@ -106,15 +108,63 @@ describe("commit boundaries on events", () => {
     expect(assertCommitGroups(storage.getEvents()).size).toBe(2);
   });
 
-  it("is deterministic under a fixed clock: two engines doing the same writes mint the same ids", async () => {
+  it("is deterministic with a pinned commitIdPrefix: two engines doing the same writes mint the same ids", async () => {
     const run = async (): Promise<unknown[]> => {
       const storage = createMemStorage();
-      const engine = createEngine({ storage, clock, blocks: [statusType] });
+      const engine = createEngine({
+        storage,
+        clock,
+        blocks: [statusType],
+        commitIdPrefix: "pinned",
+      });
       await engine.createDoc("d", { writer, content: before });
       await engine.write("d", { writer, fullText: after });
       return storage.getEvents().map((e) => e.commit);
     };
     expect(await run()).toEqual(await run());
+  });
+
+  it("shapes the id as <docId>@<version>#<prefix>.<n>", async () => {
+    const engine = createEngine({
+      storage: createMemStorage(),
+      clock,
+      blocks: [statusType],
+      commitIdPrefix: "p1",
+    });
+    const a = await engine.createDoc("d", { writer, content: before });
+    const b = await engine.write("d", { writer, fullText: after });
+    if (!a.ok || !b.ok) throw new Error("write failed");
+    expect(a.events?.[0]?.commit?.id).toBe(`d@${a.version}#p1.1`);
+    expect(b.events?.[0]?.commit?.id).toBe(`d@${b.version}#p1.2`);
+    expect(a.version).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it("gives two engines distinct ids by default, even for the same commits", async () => {
+    const ids = async (): Promise<string | undefined> => {
+      const engine = createEngine({ storage: createMemStorage(), clock, blocks: [statusType] });
+      const r = await engine.createDoc("d", { writer, content: before });
+      return r.ok ? r.events?.[0]?.commit?.id : undefined;
+    };
+    const [x, y] = [await ids(), await ids()];
+    expect(x).toBeDefined();
+    expect(x).not.toBe(y);
+  });
+
+  it("keeps commits on different documents apart when their records interleave", async () => {
+    const storage = createMemStorage();
+    const engine = createEngine({ storage, clock, blocks: [statusType] });
+    await engine.createDoc("a", { writer, content: before });
+    await engine.createDoc("b", { writer, content: before });
+    const [ra, rb] = await Promise.all([
+      engine.write("a", { writer, fullText: after }),
+      engine.write("b", { writer, fullText: after }),
+    ]);
+    if (!ra.ok || !rb.ok) throw new Error("write failed");
+    const log = storage.getEvents().slice(2);
+    const groups = assertCommitGroups(log);
+    expect(groups.size).toBe(2);
+    expect(groups.get(ra.events?.[0]?.commit?.id ?? "")).toEqual(ra.events);
+    expect(groups.get(rb.events?.[0]?.commit?.id ?? "")).toEqual(rb.events);
   });
 
   it("stamps events synthesized for an external write", async () => {
@@ -172,5 +222,18 @@ describe("commit fields in the fs event log", () => {
     const groups = assertCommitGroups(replayed.slice(1));
     expect(groups.size).toBe(2);
     expect(replayed.slice(-(w.events?.length ?? 0))).toEqual(w.events);
+  });
+
+  it("never reuses an id after a restart on the same log", async () => {
+    dir = await mkdtemp(path.join(tmpdir(), "bk-commit-"));
+    const first = createEngine({ storage: createFsStorage({ root: dir }), clock });
+    await first.createDoc("t", { writer, content: "# T\n" });
+    // A restart: a new engine over the same root removes the same bytes.
+    const second = createEngine({ storage: createFsStorage({ root: dir }), clock });
+    await second.removeDoc("t", { writer });
+    const replayed: EventRecord[] = [];
+    for await (const e of second.events({ afterSeq: 0 })) replayed.push(e);
+    expect(replayed.map((e) => e.type)).toEqual(["doc.created", "doc.removed"]);
+    expect(replayed[0]?.commit?.id).not.toBe(replayed[1]?.commit?.id);
   });
 });
