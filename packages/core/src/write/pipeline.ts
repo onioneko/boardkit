@@ -21,7 +21,7 @@ import {
   documentSizeDiagnostic,
   exceedsDocumentLimit,
 } from "../parse/size.js";
-import type { Clock, EventDraft, EventRecord, Storage } from "../ports/ports.js";
+import type { Clock, CommitInfo, EventDraft, EventRecord, Storage } from "../ports/ports.js";
 import { enforceHistory } from "../validate/history.js";
 import { validateBlock, validateParams } from "../validate/schema.js";
 import {
@@ -158,6 +158,26 @@ export interface PipelineDeps {
    * write rejects with a `TypeError`, as `createEngine` throws for it.
    */
   readonly complexityLimits?: ComplexityLimits | false;
+  /**
+   * Mints the {@link CommitInfo.id} stamped on every event of one commit. The
+   * engine passes a per-engine counter (`<docId>@<version>#<n>`); absent, the
+   * id is `<docId>@<version>`, which is not unique when content repeats.
+   */
+  readonly commitId?: (docId: DocId, version: string) => string;
+}
+
+/**
+ * Stamp each draft of one commit with its {@link CommitInfo}: a shared `id`,
+ * its `index` and the commit's `size`.
+ * @param drafts The commit's event drafts, in append order.
+ * @param id The commit id.
+ * @returns New drafts carrying `commit`.
+ */
+export function stampCommit(drafts: readonly EventDraft[], id: string): EventDraft[] {
+  return drafts.map((draft, index) => {
+    const commit: CommitInfo = { id, index, size: drafts.length };
+    return { ...draft, commit };
+  });
 }
 
 /**
@@ -242,14 +262,19 @@ function blocksOf(parsed: ParsedDoc): Block[] {
   return parsed.nodes.filter((n): n is Block => "blockId" in n);
 }
 
+/** EMIT: append one commit's drafts, stamped with their shared commit info. */
 async function emit(
   deps: PipelineDeps,
+  docId: DocId,
+  version: string,
   drafts: readonly EventDraft[],
 ): Promise<{ records: EventRecord[]; appended: boolean }> {
   const sink = deps.storage.defaultEventSink?.();
   if (sink === undefined) return { records: [], appended: false };
+  if (drafts.length === 0) return { records: [], appended: true };
+  const id = deps.commitId?.(docId, version) ?? `${docId}@${version}`;
   const records: EventRecord[] = [];
-  for (const draft of drafts) records.push(await sink.append(draft));
+  for (const draft of stampCommit(drafts, id)) records.push(await sink.append(draft));
   return { records, appended: true };
 }
 
@@ -413,10 +438,11 @@ export async function writeDoc(
       if (grown !== undefined) return grown;
       await deps.storage.writeAtomic(docId, validated.src);
       const drafts = diffAndEmitDrafts(deps, docId, current, validated.src, writer);
-      const { records, appended } = await emit(deps, drafts);
+      const version = docVersion(validated.src);
+      const { records, appended } = await emit(deps, docId, version, drafts);
       return {
         ok: true,
-        version: docVersion(validated.src),
+        version,
         events: records,
         eventsAppended: appended,
       };
@@ -581,10 +607,11 @@ export async function patchDoc(
 
       await deps.storage.writeAtomic(docId, src);
       const drafts = diffAndEmitDrafts(deps, docId, current, src, writer);
-      const { records, appended } = await emit(deps, drafts);
+      const version = docVersion(src);
+      const { records, appended } = await emit(deps, docId, version, drafts);
       return {
         ok: true,
-        version: docVersion(src),
+        version,
         ...(decision.kind === "apply" && decision.rebased ? { rebased: true } : {}),
         events: records,
         eventsAppended: appended,
@@ -632,12 +659,13 @@ export async function createDoc(
       const grown = parseLimitRejection(deps, docId, validated.src, "write");
       if (grown !== undefined) return grown;
       await deps.storage.writeAtomic(docId, validated.src);
-      const { records, appended } = await emit(deps, [
+      const version = docVersion(validated.src);
+      const { records, appended } = await emit(deps, docId, version, [
         { t: deps.clock(), type: "doc.created", docId, by: writer },
       ]);
       return {
         ok: true,
-        version: docVersion(validated.src),
+        version,
         events: records,
         eventsAppended: appended,
       };
@@ -681,11 +709,12 @@ export async function removeDoc(
         ]);
       }
       await deps.storage.delete(docId);
-      const { records, appended } = await emit(deps, [
+      // `version` is the removed content's hash: the last committed state.
+      const version = docVersion(existing);
+      const { records, appended } = await emit(deps, docId, version, [
         { t: deps.clock(), type: "doc.removed", docId, by: writer },
       ]);
-      // `version` is the removed content's hash: the last committed state.
-      return { ok: true, version: docVersion(existing), events: records, eventsAppended: appended };
+      return { ok: true, version, events: records, eventsAppended: appended };
     }),
   );
 }

@@ -803,3 +803,28 @@ describe("complexityLimits validation", () => {
     }
   });
 });
+
+describe("commit info on emitted events", () => {
+  it("defaults the commit id to docId@version without a commitId minter", async () => {
+    const d = deps();
+    const r = successOf(await createDoc(d, asDocId("c"), writer, "# C\n"));
+    expect(r.events?.map((e) => e.commit)).toEqual([{ id: `c@${r.version}`, index: 0, size: 1 }]);
+  });
+
+  it("asks deps.commitId once per commit and stamps every event with it", async () => {
+    const calls: string[] = [];
+    const d: PipelineDeps = {
+      ...deps(),
+      commitId: (docId, version) => {
+        calls.push(`${docId}@${version}`);
+        return `k${calls.length}`;
+      },
+    };
+    await createDoc(d, asDocId("c"), writer, "# C\n\n## One\n");
+    const r = successOf(await writeDoc(d, asDocId("c"), writer, "# C\n\n## Two\n\n## Three\n"));
+    expect(calls).toEqual([`c@${docVersion("# C\n\n## One\n")}`, `c@${r.version}`]);
+    const commits = (r.events ?? []).map((e) => e.commit);
+    expect(commits.length).toBeGreaterThan(1);
+    expect(commits).toEqual(commits.map((_, index) => ({ id: "k2", index, size: commits.length })));
+  });
+});

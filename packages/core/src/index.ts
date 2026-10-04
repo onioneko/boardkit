@@ -110,6 +110,7 @@ export { createMemStorage } from "./ports/mem.js";
 // ---------------------------------------------------------------------------
 export type {
   Clock,
+  CommitInfo,
   EventDraft,
   EventRecord,
   EventSink,

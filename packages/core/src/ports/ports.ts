@@ -60,6 +60,30 @@ export interface Lock {
   withLock<T>(fn: () => Promise<T>): Promise<T>;
 }
 
+/**
+ * Where an event sits in the commit that appended it. One commit (a write, a
+ * patch, an intent, a create, an import, a remove, or one handled external
+ * write) appends its events one after another; each carries the same `id`,
+ * its position `index` (0-based), and the commit's event count `size`. The
+ * event with `index === size - 1` closes the commit, so a subscriber can
+ * re-render once per commit, and a log reader can group records exactly.
+ */
+export interface CommitInfo {
+  /**
+   * The commit's id: `<docId>@<version>#<n>`, where `version` is the committed
+   * content's hash (the removed content's for `doc.removed`) and `n` counts
+   * the engine's commits from 1. Unique within one engine instance and the
+   * same for the same sequence of writes (no clock or randomness); a new
+   * engine starts counting again, so across restarts group by consecutive
+   * records rather than by id alone.
+   */
+  readonly id: string;
+  /** The event's position in its commit, from 0. */
+  readonly index: number;
+  /** How many events the commit appended. */
+  readonly size: number;
+}
+
 /** An append-only event record; `seq` is assigned monotonically by the sink. */
 export interface EventRecord {
   /** Monotonic sequence number assigned by the sink at append time. */
@@ -68,6 +92,11 @@ export interface EventRecord {
   readonly t: string;
   /** Event name, e.g. `"status.changed"`. */
   readonly type: string;
+  /**
+   * The commit this event belongs to. Every event the engine appends carries
+   * it; a record from an older log, or one a host appended by hand, may not.
+   */
+  readonly commit?: CommitInfo;
   /** Type-specific payload fields (docId, blockId, from/to, …), carried on the top level. */
   readonly [key: string]: unknown;
 }
@@ -78,6 +107,8 @@ export type EventDraft = {
   readonly t: string;
   /** Event name, e.g. `"status.changed"`. */
   readonly type: string;
+  /** The commit this event belongs to (stamped by the engine when it appends). */
+  readonly commit?: CommitInfo;
   /** Type-specific payload fields, carried on the top level. */
   readonly [key: string]: unknown;
 };

@@ -825,8 +825,18 @@ export function createEngine(opts: EngineOptions): Engine {
   const writeMiddlewares: WriteMiddleware[] = [...(opts.middleware?.write ?? [])];
   const projectionMiddlewares: ProjectionMiddleware[] = [...(opts.middleware?.projection ?? [])];
 
+  // Commit ids: `<docId>@<version>#<n>`, n counting this engine's commits
+  // (engine writes and handled external writes alike) from 1. No clock or
+  // randomness, so the same writes mint the same ids (B8).
+  let commitCount = 0;
+  const commitId = (docId: DocId, version: string): string => {
+    commitCount += 1;
+    return `${docId}@${version}#${commitCount}`;
+  };
+
   const deps: PipelineDeps = {
     storage: wrappedStorage,
+    commitId,
     clock,
     blockTypes,
     parseOptions,
@@ -957,6 +967,7 @@ export function createEngine(opts: EngineOptions): Engine {
           blockTypes,
           parseOptions,
           rootDir: watchOptions.rootDir,
+          commitId,
           maxDocumentBytes,
           complexityLimits,
           ...(watchOptions.externalWriterId !== undefined
