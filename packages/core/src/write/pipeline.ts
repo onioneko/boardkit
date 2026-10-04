@@ -65,8 +65,11 @@ export interface Writer {
  * writer create documents" and "may this writer delete documents" from "may
  * this writer replace/patch content". A create IS a whole-document write, but a
  * policy that grants full-text edits must not implicitly grant creation.
+ * `"import"` is {@link importDoc}: a create that stores the bytes verbatim,
+ * skipping content validation, so a policy can grant it separately (to a
+ * restore or undo path only, for example).
  */
-export type WriteMode = "full" | "patch" | "create" | "remove";
+export type WriteMode = "full" | "patch" | "create" | "remove" | "import";
 
 /**
  * A patch delta computed inside the write lock against the freshly-read current
@@ -90,7 +93,8 @@ export interface WritePolicy {
    * @param writer The proposed write's author.
    * @param docId The target document.
    * @param mode The write mode: `full` (replace), `patch` (attrs delta),
-   * `create` (new document), or `remove` (delete document).
+   * `create` (new document), `remove` (delete document), or `import` (new
+   * document stored verbatim, see {@link importDoc}).
    * @returns `true` to allow; `false` rejects the write with a write-domain diagnostic.
    */
   canWrite?(writer: Writer, docId: DocId, mode: WriteMode): boolean;
@@ -119,7 +123,7 @@ export type WriteResult =
       readonly ok: false;
       /** Why the write was rejected. */
       readonly rejection: {
-        /** Machine-readable rejection reason: `write-domain`, `missing-doc`, `validation`, `stale-version`, `expected-mismatch`, `missing-block`, `unknown-type`, `unknown-affordance`, `patch`, `unsupported`, `exists`, `invalid-id`, `too-large`, `too-complex`, … */
+        /** Machine-readable rejection reason: `write-domain`, `missing-doc`, `validation`, `stale-version`, `expected-mismatch`, `missing-block`, `unknown-type`, `unknown-affordance`, `patch`, `unsupported`, `exists`, `invalid-id`, `too-large`, `too-complex`, `import-amended`, … */
         readonly reason: string;
         /** The live value(s) the write conflicted with (e.g. the current version or attrs), when relevant. */
         readonly current?: unknown;
@@ -669,6 +673,82 @@ export async function createDoc(
         events: records,
         eventsAppended: appended,
       };
+    }),
+  );
+}
+
+/** Options for {@link importDoc}. */
+export interface ImportOptions {
+  /**
+   * Store content over `maxDocumentBytes` too. The document is then stored but
+   * never parsed: its projection is `ok: false` with `E_DOCUMENT_TOO_LARGE`,
+   * as for one written outside the engine. Default `false`.
+   */
+  readonly ignoreSizeLimit?: boolean;
+}
+
+/**
+ * Import a document: store `content` byte for byte under a new id and emit
+ * `doc.created` with `imported: true`. This is the restore path for a trash
+ * or an undo, which must put back exactly what was there, including content
+ * `createDoc` would reject (attrs that fail their schema, a document over a
+ * complexity limit) or rewrite (bounded-history truncation).
+ *
+ * It skips content validation, history truncation and the complexity limits.
+ * Everything else a commit does still runs: the write policy (mode
+ * `"import"`), the document lock, the write middleware (mode `"import"`,
+ * proposal `{ content }`), the self-echo record and the event. Middleware may
+ * observe or reject an import but not change its bytes: an amended proposal
+ * rejects the import with `import-amended`. Content over `maxDocumentBytes` is
+ * rejected with `too-large` unless `opts.ignoreSizeLimit` is set. An existing
+ * id is rejected with `exists`.
+ * @param deps The injected pipeline dependencies.
+ * @param docId The id of the document to import.
+ * @param writer The write's author (audit provenance).
+ * @param content The exact bytes to store.
+ * @param opts `ignoreSizeLimit` to store content over the size limit.
+ * @returns The write result, including the `doc.created` event on success.
+ */
+export async function importDoc(
+  deps: PipelineDeps,
+  docId: DocId,
+  writer: Writer,
+  content: string,
+  opts: ImportOptions = {},
+): Promise<WriteResult> {
+  if (deps.policy?.canWrite && !deps.policy.canWrite(writer, docId, "import")) {
+    return rejection("write-domain", [
+      diagnostic("E_WRITE_DOMAIN", `writer not allowed: ${docId}`),
+    ]);
+  }
+  const ctx: WriteCtx = { docId, writer, mode: "import", proposed: { content } };
+  return withLock(deps, docId, () =>
+    withWriteMiddleware(deps, ctx, async () => {
+      const proposed = ctx.proposed as { content?: unknown };
+      if (proposed.content !== content || Object.keys(proposed).length !== 1) {
+        return rejection("import-amended", [
+          diagnostic(
+            "E_IMPORT_AMENDED",
+            `write middleware amended an import of ${docId}; an import stores its bytes as given`,
+          ),
+        ]);
+      }
+      const existing = await deps.storage.read(docId);
+      if (existing !== undefined) {
+        return rejection("exists", [
+          diagnostic("E_DOC_EXISTS", `document already exists: ${docId}`),
+        ]);
+      }
+      if (opts.ignoreSizeLimit !== true) {
+        const tooLarge = sizeRejection(deps, docId, content, "write");
+        if (tooLarge !== undefined) return tooLarge;
+      }
+      await deps.storage.writeAtomic(docId, content);
+      const version = docVersion(content);
+      const { records, appended } = await emit(deps, docId, version, [
+        { t: deps.clock(), type: "doc.created", docId, by: writer, imported: true },
+      ]);
+      return { ok: true, version, events: records, eventsAppended: appended };
     }),
   );
 }

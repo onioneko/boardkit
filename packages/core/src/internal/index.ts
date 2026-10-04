@@ -71,4 +71,4 @@ export type { PatchDeltaFn } from "../write/pipeline.js";
 // ---------------------------------------------------------------------------
 // Write pipeline internals
 // ---------------------------------------------------------------------------
-export { patchDoc, removeDoc, writeDoc } from "../write/pipeline.js";
+export { importDoc, patchDoc, removeDoc, writeDoc } from "../write/pipeline.js";

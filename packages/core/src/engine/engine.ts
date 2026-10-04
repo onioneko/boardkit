@@ -53,6 +53,7 @@ import { createExternalWriteHandler, type ExternalWriteOutcome } from "../watch/
 import type { WatchSource } from "../watch/source.js";
 import {
   createDoc as createDocPipeline,
+  importDoc as importDocPipeline,
   type PipelineDeps,
   patchDoc as patchDocPipeline,
   removeDoc as removeDocPipeline,
@@ -231,9 +232,10 @@ export interface EngineOptions {
    * (default `DEFAULT_MAX_DOCUMENT_BYTES`, 256 KiB). Parsing cost grows with
    * document size, faster than linearly for some markdown, so the limit
    * bounds the work one document can cause:
-   * - a write (`write`, `patch`, `applyIntent`, `createDoc`) whose result would
-   *   exceed it is rejected with reason `too-large` and an
-   *   `E_DOCUMENT_TOO_LARGE` diagnostic, and nothing is stored;
+   * - a write (`write`, `patch`, `applyIntent`, `createDoc`, `importDoc`)
+   *   whose result would exceed it is rejected with reason `too-large` and an
+   *   `E_DOCUMENT_TOO_LARGE` diagnostic, and nothing is stored (`importDoc`
+   *   with `ignoreSizeLimit: true` stores it anyway, unparsed);
    * - a stored document over it (written outside the engine) is never parsed:
    *   its projection comes back `ok: false` with that diagnostic, an include of
    *   it stays verbatim `{{include:…}}` text with that diagnostic, `getBlock`
@@ -265,7 +267,8 @@ export interface EngineOptions {
    * `E_DOCUMENT_TOO_COMPLEX` diagnostic:
    * - a write (`write`, `patch`, `applyIntent`, `createDoc`) whose result
    *   exceeds a limit is rejected with reason `too-complex`, and nothing is
-   *   stored;
+   *   stored (`importDoc` does not check these limits: it restores bytes as
+   *   they were);
    * - a stored document over a limit is never parsed: its projection comes
    *   back `ok: false`, an include of it stays verbatim, `getBlock` treats it
    *   as absent, patches and intents against it are rejected with reason
@@ -461,6 +464,38 @@ export interface Engine {
   createDoc(
     docId: string,
     opts: { readonly writer: Writer; readonly content: string },
+  ): Promise<WriteResult>;
+  /**
+   * Import a document: store `content` byte for byte under a new id and emit
+   * `doc.created` with `imported: true`. This is the restore path for a trash
+   * or an undo: unlike {@link Engine.createDoc} it skips content validation,
+   * bounded-history truncation and {@link EngineOptions.complexityLimits}, so
+   * a document that would fail them comes back exactly as it was and reports
+   * its problems as diagnostics on read. Everything else a commit does still
+   * runs: the write policy and write middleware (both with mode `"import"`;
+   * middleware may observe or veto but not amend, which rejects with
+   * `import-amended`), the document lock, the self-echo record for `watch`,
+   * and the reverse-index and cache invalidation. Content over
+   * {@link EngineOptions.maxDocumentBytes} is rejected with `too-large` unless
+   * `ignoreSizeLimit` is set; then it is stored but never parsed, like a
+   * document written outside the engine. An existing id is rejected with
+   * `exists`. Subscribers that switch on the event type see a plain
+   * `doc.created`; check `imported` to tell a restore from a create.
+   * @param docId The id of the document to import.
+   * @param opts The write's author, the exact bytes, and `ignoreSizeLimit`.
+   * @returns The write result, including the `doc.created` event on success.
+   * @example
+   * ```ts
+   * const r = await engine.importDoc("notes/q3", { writer, content: trashed.src });
+   * ```
+   */
+  importDoc(
+    docId: string,
+    opts: {
+      readonly writer: Writer;
+      readonly content: string;
+      readonly ignoreSizeLimit?: boolean;
+    },
   ): Promise<WriteResult>;
   /**
    * Remove a document, emitting `doc.removed` (requires a Storage with `delete`).
@@ -1329,6 +1364,24 @@ export function createEngine(opts: EngineOptions): Engine {
       const id = validated.id;
       return ensureReverseIndex()
         .then(() => createDocPipeline(deps, id, writer, content))
+        .then((r) => {
+          if (r.ok) {
+            invalidateReverseIndex();
+            invalidateCaches(id);
+          }
+          return r;
+        });
+    },
+    async importDoc(docId, { writer, content, ignoreSizeLimit }) {
+      const validated = tryDocId(docId);
+      if (!validated.ok) return invalidIdRejection(validated.diagnostic);
+      const id = validated.id;
+      return ensureReverseIndex()
+        .then(() =>
+          importDocPipeline(deps, id, writer, content, {
+            ...(ignoreSizeLimit !== undefined ? { ignoreSizeLimit } : {}),
+          }),
+        )
         .then((r) => {
           if (r.ok) {
             invalidateReverseIndex();

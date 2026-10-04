@@ -14,8 +14,9 @@ import type { PatchDeltaFn, WriteMode, WriteResult, Writer } from "../write/pipe
 /**
  * The proposal a write carries into the middleware chain, discriminated by mode.
  * A full-text write is `{ fullText }`; a patch is `{ blockId, delta }`; a create
- * is `{ content }` (the initial source text); a remove is `{}` (nothing to amend
- * — the target is `docId`).
+ * is `{ content }` (the initial source text); an import is `{ content }` too
+ * (the bytes to store, which middleware may read but not amend); a remove is
+ * `{}` (nothing to amend — the target is `docId`).
  *
  * A patch that originated in an Intent also carries its origin — the
  * `affordance` name and the intent's `params` — so a host policy can see *what
@@ -50,13 +51,15 @@ export interface WriteCtx {
   readonly docId: DocId;
   /** The write's author. */
   readonly writer: Writer;
-  /** Which write mode is running (`full`, `patch`, `create`, or `remove`). */
+  /** Which write mode is running (`full`, `patch`, `create`, `remove`, or `import`). */
   readonly mode: WriteMode;
   /**
    * The proposed change; mutable before `next()` (amend or reject). For a
    * full-text write it is `{ fullText }`; for a patch it is `{ blockId, delta }`
    * plus `{ affordance, params }` when the patch came from an Intent; for a
-   * create it is `{ content }` (the initial source text); for a remove it is
+   * create it is `{ content }` (the initial source text); for an import it is
+   * `{ content }`, which may be read but not amended (an amended import is
+   * rejected with `import-amended`); for a remove it is
    * `{}` (a removal has nothing to amend — the target is `docId`). Amending an
    * intent's `params` re-decodes and re-validates the patch inside the lock.
    */

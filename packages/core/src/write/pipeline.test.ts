@@ -11,6 +11,7 @@ import { createMemStorage } from "../ports/mem.js";
 import type { Storage } from "../ports/ports.js";
 import {
   createDoc,
+  importDoc,
   type PatchDeltaFn,
   type PipelineDeps,
   patchDoc,
@@ -826,5 +827,152 @@ describe("commit info on emitted events", () => {
     const commits = (r.events ?? []).map((e) => e.commit);
     expect(commits.length).toBeGreaterThan(1);
     expect(commits).toEqual(commits.map((_, index) => ({ id: "k2", index, size: commits.length })));
+  });
+});
+
+describe("importDoc (restore bytes verbatim)", () => {
+  // A status whose value is outside its states: createDoc rejects it.
+  const invalid = "```status\nid: s\nstates: [a, b]\nvalue: nope\n```\n";
+  // A checklist over its history bound: createDoc would truncate `recent`.
+  const overHistory = "```checklist\nid: c\nitems: []\nrecent: [1, 2, 3, 4]\n```\n";
+  const deep = `# t\n\n${">".repeat(8000)} x\n`;
+
+  it("stores content createDoc would reject or rewrite, byte for byte", async () => {
+    const d = deps();
+    expect(rejectionOf(await createDoc(d, asDocId("bad"), writer, invalid)).reason).toBe(
+      "validation",
+    );
+    const r = successOf(await importDoc(d, asDocId("bad"), writer, invalid));
+    expect(r.version).toBe(docVersion(invalid));
+    expect(await d.storage.read(asDocId("bad"))).toBe(invalid);
+
+    successOf(await createDoc(d, asDocId("hist-created"), writer, overHistory));
+    expect(await d.storage.read(asDocId("hist-created"))).not.toBe(overHistory);
+    successOf(await importDoc(d, asDocId("hist"), writer, overHistory));
+    expect(await d.storage.read(asDocId("hist"))).toBe(overHistory);
+  });
+
+  it("skips the complexity limits", async () => {
+    const d = deps();
+    successOf(await importDoc(d, asDocId("deep"), writer, deep));
+    expect(await d.storage.read(asDocId("deep"))).toBe(deep);
+  });
+
+  it("enforces maxDocumentBytes unless ignoreSizeLimit is set", async () => {
+    const d = { ...deps(), maxDocumentBytes: 16 };
+    const big = "# a document over sixteen bytes\n";
+    const r = rejectionOf(await importDoc(d, asDocId("big"), writer, big));
+    expect(r.reason).toBe("too-large");
+    expect(r.diagnostics.map((x) => x.code)).toEqual(["E_DOCUMENT_TOO_LARGE"]);
+    expect(await d.storage.read(asDocId("big"))).toBeUndefined();
+
+    successOf(await importDoc(d, asDocId("big"), writer, big, { ignoreSizeLimit: true }));
+    expect(await d.storage.read(asDocId("big"))).toBe(big);
+  });
+
+  it("rejects an existing id with exists, leaving it untouched", async () => {
+    const d = deps();
+    await createDoc(d, asDocId("fin"), writer, "# T");
+    const r = rejectionOf(await importDoc(d, asDocId("fin"), writer, invalid));
+    expect(r.reason).toBe("exists");
+    expect(await d.storage.read(asDocId("fin"))).toBe("# T");
+  });
+
+  it("emits one doc.created with imported: true, by and commit info", async () => {
+    const d = deps();
+    const r = successOf(await importDoc(d, asDocId("bad"), writer, invalid));
+    expect(r.events).toEqual([
+      {
+        seq: 1,
+        t: "2026-08-21T00:00:00Z",
+        type: "doc.created",
+        docId: "bad",
+        by: writer,
+        imported: true,
+        commit: { id: `bad@${r.version}`, index: 0, size: 1 },
+      },
+    ]);
+  });
+
+  it("asks the write policy with mode import", async () => {
+    const modes: string[] = [];
+    const d: PipelineDeps = {
+      ...deps(),
+      policy: {
+        canWrite: (_w, _id, mode) => {
+          modes.push(mode);
+          return false;
+        },
+      },
+    };
+    expect(rejectionOf(await importDoc(d, asDocId("bad"), writer, invalid)).reason).toBe(
+      "write-domain",
+    );
+    expect(modes).toEqual(["import"]);
+  });
+
+  it("runs write middleware with mode import and proposal { content }; it may veto", async () => {
+    const seen: Array<{ mode: string; proposed: unknown }> = [];
+    const d: PipelineDeps & { storage: ReturnType<typeof createMemStorage> } = {
+      ...deps(),
+      middleware: [
+        async (ctx, next) => {
+          seen.push({ mode: ctx.mode, proposed: ctx.proposed });
+          if (ctx.docId === "vetoed") throw new WriteRejection("no-restore");
+          await next();
+        },
+      ],
+    };
+    successOf(await importDoc(d, asDocId("bad"), writer, invalid));
+    expect(rejectionOf(await importDoc(d, asDocId("vetoed"), writer, invalid)).reason).toBe(
+      "no-restore",
+    );
+    expect(await d.storage.read(asDocId("vetoed"))).toBeUndefined();
+    expect(seen).toEqual([
+      { mode: "import", proposed: { content: invalid } },
+      { mode: "import", proposed: { content: invalid } },
+    ]);
+  });
+
+  it("rejects a middleware amendment instead of storing other bytes", async () => {
+    const d: PipelineDeps & { storage: ReturnType<typeof createMemStorage> } = {
+      ...deps(),
+      middleware: [
+        async (ctx, next) => {
+          ctx.proposed = { content: "# amended" };
+          await next();
+        },
+      ],
+    };
+    const r = rejectionOf(await importDoc(d, asDocId("bad"), writer, invalid));
+    expect(r.reason).toBe("import-amended");
+    expect(r.diagnostics.map((x) => x.code)).toEqual(["E_IMPORT_AMENDED"]);
+    expect(await d.storage.read(asDocId("bad"))).toBeUndefined();
+  });
+
+  it("runs under the document lock", async () => {
+    const d = deps();
+    let held = 0;
+    const storage: Storage = {
+      ...d.storage,
+      read: (id) => d.storage.read(id),
+      writeAtomic: async (id, content) => {
+        expect(held).toBe(1);
+        await d.storage.writeAtomic(id, content);
+      },
+      list: () => d.storage.list(),
+      defaultLock: () => ({
+        async withLock(fn) {
+          held += 1;
+          try {
+            return await fn();
+          } finally {
+            held -= 1;
+          }
+        },
+      }),
+    };
+    successOf(await importDoc({ ...d, storage }, asDocId("bad"), writer, invalid));
+    expect(held).toBe(0);
   });
 });
