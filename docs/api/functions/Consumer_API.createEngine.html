@@ -16,27 +16,13 @@
 <li class="">
 <div class="tsd-signature tsd-anchor-link" id="createengine"><span class="tsd-kind-call-signature">createEngine</span><span class="tsd-signature-symbol">(</span><span class="tsd-kind-parameter">opts</span><span class="tsd-signature-symbol">:</span> <a href="../interfaces/Consumer_API.EngineOptions.html" class="tsd-signature-type tsd-kind-interface">EngineOptions</a><span class="tsd-signature-symbol">)</span><span class="tsd-signature-symbol">:</span> <a href="../interfaces/Consumer_API.Engine.html" class="tsd-signature-type tsd-kind-interface">Engine</a><a href="#createengine" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></div>
 <div class="tsd-description">
-<div class="tsd-comment tsd-typography"><p>Assemble an Engine from storage, optional clock, block types, projectors, and
-write policy. The engine wires the read path (LOAD → PARSE → LINK → MERGE →
-RESOLVE → PROJECT) and the write pipeline (VALIDATE → LOCK → COMMIT → DIFF →
-EMIT) over the supplied ports, and starts watching if <code>opts.watch</code> is set.</p>
-</div>
 <div class="tsd-parameters">
 <h4 class="tsd-parameters-title">Parameters</h4>
 <ul class="tsd-parameter-list">
-<li><span><span class="tsd-kind-parameter">opts</span>: <a href="../interfaces/Consumer_API.EngineOptions.html" class="tsd-signature-type tsd-kind-interface">EngineOptions</a></span>
-<div class="tsd-comment tsd-typography"><p>The engine's configuration (only <code>storage</code> is required).</p>
-</div></li></ul></div>
-<h4 class="tsd-returns-title">Returns <a href="../interfaces/Consumer_API.Engine.html" class="tsd-signature-type tsd-kind-interface">Engine</a></h4><p>The assembled engine.</p>
-
-<div class="tsd-comment tsd-typography">
-<div class="tsd-tag-example">
-<h4 class="tsd-anchor-link" id="example">Example<a href="#example" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h4><pre><code class="ts"><span class="hl-5">const</span><span class="hl-1"> </span><span class="hl-7">engine</span><span class="hl-1"> = </span><span class="hl-0">createEngine</span><span class="hl-1">({</span><br/><span class="hl-1">  </span><span class="hl-4">storage:</span><span class="hl-1"> </span><span class="hl-0">createMemStorage</span><span class="hl-1">(),</span><br/><span class="hl-1">  </span><span class="hl-4">blocks:</span><span class="hl-1"> </span><span class="hl-4">starterBlocks</span><span class="hl-1">,</span><br/><span class="hl-1">});</span>
-</code><button type="button">Copy</button></pre>
-
-</div></div><aside class="tsd-sources">
+<li><span><span class="tsd-kind-parameter">opts</span>: <a href="../interfaces/Consumer_API.EngineOptions.html" class="tsd-signature-type tsd-kind-interface">EngineOptions</a></span></li></ul></div>
+<h4 class="tsd-returns-title">Returns <a href="../interfaces/Consumer_API.Engine.html" class="tsd-signature-type tsd-kind-interface">Engine</a></h4><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/engine/engine.ts#L682">packages/core/src/engine/engine.ts:682</a></li></ul></aside></div></li></ul></section></div>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/engine/engine.ts#L688">packages/core/src/engine/engine.ts:688</a></li></ul></aside></div></li></ul></section></div>
 <div class="col-sidebar">
 <div class="page-menu">
 <div class="tsd-navigation settings">
