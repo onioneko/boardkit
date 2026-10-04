@@ -62,6 +62,18 @@ export function createMemStorage(opts: MemStorageOptions = {}): MemStorage {
       }
     },
 
+    async size(docId) {
+      try {
+        const st = await fs.stat(docPath(docId));
+        return st.isFile() ? Number(st.size) : undefined;
+      } catch (err) {
+        if (err instanceof Error && (err as NodeJS.ErrnoException).code === "ENOENT") {
+          return undefined;
+        }
+        throw err;
+      }
+    },
+
     async writeAtomic(docId, content) {
       await fs.mkdir(path.dirname(docPath(docId)), { recursive: true });
       await fs.writeFile(docPath(docId), content);

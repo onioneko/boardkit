@@ -27,6 +27,23 @@ export interface Storage {
    */
   writeAtomic(docId: DocId, content: string): Promise<void>;
   /**
+   * Optional: a document's stored size in bytes, without reading it. The
+   * engine calls it before reading a document it may have to refuse, so a
+   * stored document over `maxDocumentBytes` is diagnosed without being loaded
+   * into memory. The size must not exceed the UTF-8 byte length of the
+   * source `read` returns, since a document is refused on its size alone: the
+   * byte size of a file read as UTF-8 meets this (decoding never shortens it).
+   *
+   * Return `undefined` when the document does not exist or its size is not
+   * known: the engine then reads it and measures the source, as it does for a
+   * storage without `size`. A size within the limit is always followed by a
+   * read, which checks the source itself, so a size that is too small costs
+   * nothing but the call. A `size` that throws is treated as unknown.
+   * @param docId The document to measure.
+   * @returns Its size in bytes, or `undefined` when missing or unknown.
+   */
+  size?(docId: DocId): Promise<number | undefined>;
+  /**
    * Delete a document (used by `removeDoc`); a missing document is a no-op.
    * @param docId The document to delete.
    */

@@ -7,6 +7,7 @@ import {
   readlink,
   realpath,
   rm,
+  stat,
 } from "node:fs/promises";
 import path from "node:path";
 import lockfile from "proper-lockfile";
@@ -202,6 +203,16 @@ export function createFsStorage(opts: FsStorageOptions): Storage {
     async read(docId) {
       try {
         return await readFile(await docPath(root, docId), "utf8");
+      } catch (err) {
+        if (isNotFound(err)) return undefined;
+        throw err;
+      }
+    },
+
+    async size(docId) {
+      try {
+        const st = await stat(await docPath(root, docId));
+        return st.isFile() ? st.size : undefined;
       } catch (err) {
         if (isNotFound(err)) return undefined;
         throw err;
