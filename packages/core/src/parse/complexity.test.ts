@@ -5,7 +5,9 @@ import { describe, expect, it } from "vitest";
 import {
   type ComplexityLimits,
   DEFAULT_COMPLEXITY_LIMITS,
+  delimiterRunCan,
   documentComplexityDiagnostic,
+  fencedCodeLines,
   resolveComplexityLimits,
 } from "./complexity.js";
 
@@ -42,7 +44,7 @@ describe("documentComplexityDiagnostic", () => {
       maxIndentColumns: 160,
       maxBracketDepth: 32,
       maxDelimiterRun: 64,
-      maxEmphasisDepth: 64,
+      maxEmphasisDepth: 256,
     });
     expect(Object.isFrozen(DEFAULT_COMPLEXITY_LIMITS)).toBe(true);
   });
@@ -186,21 +188,21 @@ describe("documentComplexityDiagnostic", () => {
 
     it("still counts a run on a line with other content", () => {
       expect(check(`${"_".repeat(80)} x\n`)?.code).toBe("E_DOCUMENT_TOO_COMPLEX");
-      expect(check(`${"~".repeat(70)}python\n`)?.code).toBe("E_DOCUMENT_TOO_COMPLEX");
+      expect(check(`x ${"~".repeat(70)}\n`)?.code).toBe("E_DOCUMENT_TOO_COMPLEX");
       expect(check(`${"*".repeat(40)}${"_".repeat(40)}\n`)).toBeUndefined();
     });
   });
 
   describe("maxEmphasisDepth", () => {
     it("accepts n unclosed openers in a paragraph and rejects n + 1", () => {
-      expect(check(`${"*a ".repeat(64)}\n`)).toBeUndefined();
-      const d = check(`${"*a ".repeat(65)}\n`);
+      expect(check(`${"*a ".repeat(256)}\n`)).toBeUndefined();
+      const d = check(`${"*a ".repeat(257)}\n`);
       expect(d?.code).toBe("E_DOCUMENT_TOO_COMPLEX");
       expect(d?.message).toContain("maxEmphasisDepth");
       // A run opens as many levels as it has characters.
-      expect(check(`${"**a ".repeat(32)}\n`)).toBeUndefined();
-      expect(check(`${"**a ".repeat(33)}\n`)?.code).toBe("E_DOCUMENT_TOO_COMPLEX");
-      expect(check(`${"~a ".repeat(65)}\n`)?.code).toBe("E_DOCUMENT_TOO_COMPLEX");
+      expect(check(`${"**a ".repeat(128)}\n`)).toBeUndefined();
+      expect(check(`${"**a ".repeat(129)}\n`)?.code).toBe("E_DOCUMENT_TOO_COMPLEX");
+      expect(check(`${"~a ".repeat(257)}\n`)?.code).toBe("E_DOCUMENT_TOO_COMPLEX");
     });
 
     it("refuses deeply nested alternating emphasis", () => {
@@ -217,7 +219,7 @@ describe("documentComplexityDiagnostic", () => {
     });
 
     it("keeps one count per marker: a closer only lowers its own", () => {
-      expect(check(`${"_a ".repeat(40)}${"a** ".repeat(40)}${"_a ".repeat(30)}\n`)?.code).toBe(
+      expect(check(`${"_a ".repeat(160)}${"a** ".repeat(160)}${"_a ".repeat(120)}\n`)?.code).toBe(
         "E_DOCUMENT_TOO_COMPLEX",
       );
     });
@@ -225,8 +227,17 @@ describe("documentComplexityDiagnostic", () => {
     it("counts a run that can both open and close", () => {
       // Intraword stars can open (and close), so a long enough run of them in
       // one paragraph is refused: a known false positive.
-      expect(check(`${"2*3 ".repeat(64)}\n`)).toBeUndefined();
-      expect(check(`${"2*3 ".repeat(65)}\n`)?.code).toBe("E_DOCUMENT_TOO_COMPLEX");
+      expect(check(`${"2*3 ".repeat(256)}\n`)).toBeUndefined();
+      expect(check(`${"2*3 ".repeat(257)}\n`)?.code).toBe("E_DOCUMENT_TOO_COMPLEX");
+    });
+
+    it("treats a run before another attention marker as an opener, as micromark does", () => {
+      // `a*_`: plain flanking says the `*` can only close; micromark lets a run
+      // followed by another marker open too.
+      expect(delimiterRunCan(0x2a, 1, "a", "_")).toEqual({ open: true, close: true });
+      expect(delimiterRunCan(0x2a, 1, "a", " ")).toEqual({ open: false, close: true });
+      expect(delimiterRunCan(0x5f, 1, "a", "b")).toEqual({ open: false, close: false });
+      expect(delimiterRunCan(0x7e, 3, " ", "a")).toEqual({ open: false, close: false });
     });
 
     it("lets closers lower the depth", () => {
@@ -235,7 +246,7 @@ describe("documentComplexityDiagnostic", () => {
         check(`${"*a ".repeat(60)}x${" a*".repeat(60)} ${"*a ".repeat(60)}\n`),
       ).toBeUndefined();
       // A stray closer does not go below zero and so cannot bank depth.
-      expect(check(`${"a* ".repeat(100)}${"*a ".repeat(64)}\n`)).toBeUndefined();
+      expect(check(`${"a* ".repeat(100)}${"*a ".repeat(256)}\n`)).toBeUndefined();
     });
 
     it("does not count intraword underscores, unflanked stars or escapes", () => {
@@ -246,13 +257,94 @@ describe("documentComplexityDiagnostic", () => {
 
     it("counts openers after Unicode punctuation", () => {
       // CommonMark treats Unicode punctuation like ASCII punctuation here.
-      expect(check(`${"「*a ".repeat(65)}\n`)?.code).toBe("E_DOCUMENT_TOO_COMPLEX");
-      expect(check(`${"「_a ".repeat(65)}\n`)?.code).toBe("E_DOCUMENT_TOO_COMPLEX");
+      expect(check(`${"「*a ".repeat(257)}\n`)?.code).toBe("E_DOCUMENT_TOO_COMPLEX");
+      expect(check(`${"「_a ".repeat(257)}\n`)?.code).toBe("E_DOCUMENT_TOO_COMPLEX");
     });
 
     it("tracks depth across the lines of a paragraph and resets at a blank line", () => {
-      expect(check(`${"*a\n".repeat(65)}`)?.code).toBe("E_DOCUMENT_TOO_COMPLEX");
-      expect(check(`${"*a ".repeat(40)}\n\n${"*a ".repeat(40)}\n`)).toBeUndefined();
+      expect(check(`${"*a\n".repeat(257)}`)?.code).toBe("E_DOCUMENT_TOO_COMPLEX");
+      expect(check(`${"*a ".repeat(200)}\n\n${"*a ".repeat(200)}\n`)).toBeUndefined();
+    });
+
+    it("accepts the technical markdown the review found refused at the old default", () => {
+      const globTable = `| pattern | what |\n|---|---|\n${"| `src/**/*.ts` | sources |\n".repeat(40)}`;
+      const mdTable = `| file | note |\n|---|---|\n${"| `*.md` | docs |\n".repeat(70)}`;
+      const tightList = "- `*.ts` files\n".repeat(70);
+      const regexFence = `\`\`\`python\n${"re.compile(r'.*foo.*')\n".repeat(80)}\`\`\`\n`;
+      for (const [name, src] of Object.entries({ globTable, mdTable, tightList, regexFence })) {
+        expect({ name, d: check(src) }).toEqual({ name, d: undefined });
+      }
+    });
+
+    it("still refuses emphasis nested past the new limit in prose", () => {
+      const src = `${"*a _b ".repeat(130)}x${" b_ a*".repeat(130)}\n`;
+      expect(check(src)?.message).toContain("maxEmphasisDepth");
+    });
+  });
+
+  describe("fenced code", () => {
+    const regex = "re.compile(r'.*foo.*')\n".repeat(300);
+    const deep = `${"*a ".repeat(300)}\n`;
+
+    it("skips the content of a closed fence, and scans the prose after it", () => {
+      expect(check(regex)?.message).toContain("maxEmphasisDepth");
+      expect(check(`\`\`\`\n${regex}\`\`\`\n`)).toBeUndefined();
+      expect(check(`~~~~ text\n${regex}~~~~~~\n`)).toBeUndefined();
+      expect(check(`> \`\`\`\n${regex.replace(/^/gm, "> ")}> \`\`\`\n`)).toBeUndefined();
+      expect(check(`\`\`\`\n${regex}\`\`\`\n\n${deep}`)?.line).toBe(304);
+    });
+
+    it("skips brackets and delimiter runs inside a fence", () => {
+      expect(check(`\`\`\`\n${"x.append('[')\n".repeat(40)}\`\`\`\n`)).toBeUndefined();
+      const stars = `x = '${"*".repeat(80)}'\n`;
+      expect(check(stars)?.message).toContain("maxDelimiterRun");
+      expect(check(`\`\`\`\n${stars}\`\`\`\n`)).toBeUndefined();
+    });
+
+    it("runs an unclosed fence to the end of the document", () => {
+      expect(check(`\`\`\`\n${regex}`)).toBeUndefined();
+    });
+
+    it("does not close on a shorter or different fence", () => {
+      expect(check(`\`\`\`\`\n\`\`\`\n${regex}\`\`\`\`\n`)).toBeUndefined();
+      expect(check(`\`\`\`\n~~~\n${regex}\`\`\`\n`)).toBeUndefined();
+      expect(check(`\`\`\`\n\`\`\` x\n${regex}\`\`\`\n`)).toBeUndefined();
+      // Closing fences may be indented up to 3 spaces; 4 is code.
+      expect(check(`\`\`\`\n    \`\`\`\n${regex}`)).toBeUndefined();
+      expect(check(`\`\`\`\n   \`\`\`\n${deep}`)?.code).toBe("E_DOCUMENT_TOO_COMPLEX");
+    });
+
+    it("ends a fence in a block quote at the first line outside the quote", () => {
+      expect(check(`> \`\`\`\n> code\n${deep}`)?.code).toBe("E_DOCUMENT_TOO_COMPLEX");
+      expect(check(`> \`\`\`\n> code\n\n${deep}`)?.code).toBe("E_DOCUMENT_TOO_COMPLEX");
+      expect(check(`> > \`\`\`\n> > code\n> ${deep}`)?.code).toBe("E_DOCUMENT_TOO_COMPLEX");
+    });
+
+    it("does not treat look-alikes as fences", () => {
+      // A backtick fence's info string cannot hold a backtick.
+      expect(check(`\`\`\`a\`b\n${deep}`)?.code).toBe("E_DOCUMENT_TOO_COMPLEX");
+      // Indented 4 spaces: code or paragraph text, not a fence.
+      expect(check(`    \`\`\`\n${deep}`)?.code).toBe("E_DOCUMENT_TOO_COMPLEX");
+      // Two backticks are not a fence.
+      expect(check(`\`\`\n${deep}`)?.code).toBe("E_DOCUMENT_TOO_COMPLEX");
+    });
+
+    it("does not let a fence-like line inside HTML or front matter hide prose", () => {
+      expect(check(`<!--\n\`\`\`\n-->\n${deep}`)?.code).toBe("E_DOCUMENT_TOO_COMPLEX");
+      expect(check(`<div>\n\`\`\`\n</div>\n\n${deep}`)?.code).toBe("E_DOCUMENT_TOO_COMPLEX");
+      expect(check(`---\na: \`\`\`\n\`\`\`\n---\n${deep}`)?.code).toBe("E_DOCUMENT_TOO_COMPLEX");
+    });
+
+    it("does not let a fence it cannot follow hide prose", () => {
+      // A fence in a list item ends where the item does, which the scan does
+      // not track: it stops skipping fences altogether.
+      expect(check(`- ~~~\n  \`\`\`\nx\n${deep}`)?.code).toBe("E_DOCUMENT_TOO_COMPLEX");
+      expect(check(`  ~~~~\n\`\`\`\n  ~~~~\n${deep}`)?.code).toBe("E_DOCUMENT_TOO_COMPLEX");
+    });
+
+    it("marks the lines it skips", () => {
+      const flags = fencedCodeLines("a\n```\nb\n```\nc\n> ~~~\n> d\ne\n");
+      expect([...flags]).toEqual([0, 2, 1, 1, 0, 2, 1, 0]);
     });
   });
 

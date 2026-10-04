@@ -41,9 +41,12 @@ export interface ComplexityLimits {
    * that can open (even if it could also close) adds its length to the count
    * for its marker, a run that can only close cancels up to its length of
    * openers of the same marker (and, for `~`, the same length) that could not
-   * also close, and the limit applies to the sum of the counts. Paragraphs reset as for `maxBracketDepth`. The estimate is an upper
-   * bound, so some text is over-counted: more than 64 intraword `*` (`2*3`)
-   * in one paragraph is refused. Defaults to 64.
+   * also close, and the limit applies to the sum of the counts. Paragraphs
+   * reset as for `maxBracketDepth`, and fenced code is not counted. The
+   * estimate is an upper bound, so some text is over-counted: `*` between
+   * letters (`2*3`) or inside code spans (globs and regexes)
+   * counts as opening, so a paragraph, table or tight list with more than 256
+   * such runs is refused. Defaults to 256.
    */
   readonly maxEmphasisDepth?: number;
 }
@@ -51,14 +54,14 @@ export interface ComplexityLimits {
 /**
  * The default {@link ComplexityLimits}: 32 container markers on a line, 160
  * columns of prefix indentation, `[` nesting 32 deep, delimiter runs of 64,
- * and emphasis nesting 64 deep.
+ * and emphasis nesting 256 deep.
  */
 export const DEFAULT_COMPLEXITY_LIMITS: Readonly<Required<ComplexityLimits>> = Object.freeze({
   maxContainerDepth: 32,
   maxIndentColumns: 160,
   maxBracketDepth: 32,
   maxDelimiterRun: 64,
-  maxEmphasisDepth: 64,
+  maxEmphasisDepth: 256,
 });
 
 const COMPLEXITY_LIMIT_KEYS = [
@@ -115,8 +118,13 @@ function isAttentionMarker(ch: string): boolean {
  * `micromark-extension-gfm-strikethrough`), including the rule that a run
  * next to another attention marker can open (before it) or close (after it).
  * A tilde run longer than 2 is not a delimiter at all.
+ * @param code The run's character code (`*`, `_` or `~`).
+ * @param length The run's length.
+ * @param before The character before the run (`""` at a line edge).
+ * @param after The character after the run (`""` at a line edge).
+ * @returns Whether the run can open and whether it can close.
  */
-function runCan(
+export function delimiterRunCan(
   code: number,
   length: number,
   before: string,
@@ -201,11 +209,223 @@ function markerLength(src: string, i: number): number {
   return 0;
 }
 
+const GT = 0x3e;
+const BACKTICK = 0x60;
+const TILDE = 0x7e;
+const LT = 0x3c;
+const FRONT_MATTER_FENCE = /^---[ \t]*$/;
+
+/** A fence opened on a line: its block-quote depth, character and length. */
+interface OpenFence {
+  readonly quotes: number;
+  readonly char: number;
+  readonly length: number;
+}
+
+/** The length of the run of `char` starting at `p`, stopping at `end`. */
+function runLength(src: string, p: number, end: number, char: number): number {
+  let q = p;
+  while (q < end && src.charCodeAt(q) === char) q += 1;
+  return q - p;
+}
+
+/** Whether `src` between `p` and `end` holds a character `char`. */
+function holds(src: string, p: number, end: number, char: number): boolean {
+  for (let q = p; q < end; q += 1) if (src.charCodeAt(q) === char) return true;
+  return false;
+}
+
+/** Whether `src` between `p` and `end` is only spaces and tabs. */
+function onlyWhitespace(src: string, p: number, end: number): boolean {
+  for (let q = p; q < end; q += 1) if (!isWhitespace(src.charCodeAt(q))) return false;
+  return true;
+}
+
+/** Where a line's content starts after whitespace and any container markers. */
+function contentAfterPrefix(src: string, start: number, end: number): number {
+  let q = start;
+  for (;;) {
+    while (q < end && isWhitespace(src.charCodeAt(q))) q += 1;
+    const len = q < end ? markerLength(src, q) : 0;
+    if (len === 0) return q;
+    q += len;
+  }
+}
+
+/**
+ * Classify a line outside fenced code: a fence opener the scan can follow
+ * exactly, a fence-like line it cannot (`"unsure"`), or neither.
+ *
+ * Followed exactly: block-quote markers only, each straight after the last
+ * (`>` and its optional space), then at most 1 space before 3 or more
+ * backticks or tildes. A list item's content starts at least 2 columns in,
+ * so such a line is never inside a list item or footnote: its container is
+ * the block quote its markers name (or the document), and where the fence
+ * ends is then known exactly.
+ */
+function openFence(src: string, start: number, end: number): OpenFence | "unsure" | undefined {
+  let p = start;
+  let quotes = 0;
+  while (p < end && src.charCodeAt(p) === GT) {
+    quotes += 1;
+    p += 1;
+    if (src.charCodeAt(p) === SPACE && p < end) p += 1;
+  }
+  let spaces = 0;
+  while (p < end && src.charCodeAt(p) === SPACE) {
+    spaces += 1;
+    p += 1;
+  }
+  const strict = fenceRunAt(src, p, end);
+  if (strict !== undefined) {
+    if (strict === "not-a-fence") return undefined;
+    if (spaces <= 1) return { quotes, char: strict.char, length: strict.length };
+    return "unsure";
+  }
+  // Anywhere else (indented, after a list marker, after a tab), a fence-like
+  // line may or may not open a fence, and its end depends on containers the
+  // scan does not track.
+  const loose = fenceRunAt(src, contentAfterPrefix(src, start, end), end);
+  return loose === undefined || loose === "not-a-fence" ? undefined : "unsure";
+}
+
+/** A fence run of 3 or more at `p`, `"not-a-fence"` for a backtick run whose info has a backtick. */
+function fenceRunAt(
+  src: string,
+  p: number,
+  end: number,
+): { readonly char: number; readonly length: number } | "not-a-fence" | undefined {
+  const char = src.charCodeAt(p);
+  if (p >= end || (char !== BACKTICK && char !== TILDE)) return undefined;
+  const length = runLength(src, p, end, char);
+  if (length < 3) return undefined;
+  if (char === BACKTICK && holds(src, p + length, end, BACKTICK)) return "not-a-fence";
+  return { char, length };
+}
+
+/**
+ * Classify a line inside a fence: still `"code"`, the closing fence
+ * (`"close"`, itself code), the end of the fence's block quote (`"ended"`:
+ * the line is not code and is scanned as usual), or `"unsure"` when a tab
+ * makes the columns ambiguous.
+ */
+function continueFence(
+  src: string,
+  start: number,
+  end: number,
+  fence: OpenFence,
+): "code" | "close" | "ended" | "unsure" {
+  let p = start;
+  let tabbed = false;
+  for (let q = 0; q < fence.quotes; q += 1) {
+    let spaces = 0;
+    while (p < end && src.charCodeAt(p) === SPACE) {
+      spaces += 1;
+      p += 1;
+    }
+    if (p < end && src.charCodeAt(p) === TAB) return "unsure";
+    if (spaces > 3 || p >= end || src.charCodeAt(p) !== GT) return "ended";
+    p += 1;
+    if (p < end && src.charCodeAt(p) === SPACE) p += 1;
+    else if (p < end && src.charCodeAt(p) === TAB) tabbed = true;
+  }
+  let spaces = 0;
+  while (p < end && src.charCodeAt(p) === SPACE) {
+    spaces += 1;
+    p += 1;
+  }
+  if (spaces > 3) return "code";
+  let r = p;
+  while (r < end && isWhitespace(src.charCodeAt(r))) {
+    tabbed = true;
+    r += 1;
+  }
+  const length = runLength(src, r, end, fence.char);
+  if (length < fence.length || !onlyWhitespace(src, r + length, end)) return "code";
+  return tabbed ? "unsure" : "close";
+}
+
+/**
+ * Which lines are fenced code, so the scan can skip their content: emphasis,
+ * brackets and delimiter runs mean nothing there. A per-line flag: 0 for a
+ * line the scan reads, 1 for fenced code (including a closing fence), 2 for
+ * an opening fence (code too, and the end of any open paragraph).
+ *
+ * It follows CommonMark's fence rules (3 or more backticks or tildes, closed
+ * by a run of the same character at least as long, indented at most 3
+ * spaces, with nothing after it; an unclosed fence runs to the end of the
+ * document or of its block quote), but only where it can follow them
+ * exactly. Wherever it cannot be sure the parser reads a line as code, it
+ * reads the line, and from the first line it cannot follow (a fence in a
+ * list item, an indented or tab-indented fence, a line that may start an
+ * HTML block) it skips nothing more. Front matter is never searched for
+ * fences. Linear in the source length.
+ * @param src The document source.
+ * @returns One flag per line, split at LF, CR and CRLF.
+ */
+export function fencedCodeLines(src: string): Uint8Array {
+  const starts: number[] = [];
+  const ends: number[] = [];
+  for (let i = 0; i < src.length; ) {
+    let j = i;
+    while (j < src.length && !isLineEnd(src.charCodeAt(j))) j += 1;
+    starts.push(i);
+    ends.push(j);
+    if (src.charCodeAt(j) === CR) {
+      j += 1;
+      if (src.charCodeAt(j) === LF) j += 1;
+    } else if (src.charCodeAt(j) === LF) {
+      j += 1;
+    }
+    i = j;
+  }
+  const flags = new Uint8Array(starts.length);
+  let first = 0;
+  if (src.startsWith("---")) {
+    // Possible front matter: no fence opens before its closing line.
+    first = 1;
+    while (
+      first < starts.length &&
+      !FRONT_MATTER_FENCE.test(src.slice(starts[first], ends[first]))
+    ) {
+      first += 1;
+    }
+    first += 1;
+  }
+  let fence: OpenFence | undefined;
+  for (let l = first; l < starts.length; l += 1) {
+    const start = starts[l] ?? 0;
+    const end = ends[l] ?? 0;
+    if (fence !== undefined) {
+      const state = continueFence(src, start, end, fence);
+      if (state === "unsure") break;
+      if (state === "code" || state === "close") {
+        flags[l] = 1;
+        if (state === "close") fence = undefined;
+        continue;
+      }
+      fence = undefined;
+    }
+    const opened = openFence(src, start, end);
+    if (opened === "unsure") break;
+    if (opened !== undefined) {
+      flags[l] = 2;
+      fence = opened;
+      continue;
+    }
+    // A line that may start an HTML block: fence-like lines inside it are
+    // not fences, and the block's end is not tracked.
+    if (src.charCodeAt(contentAfterPrefix(src, start, end)) === LT) break;
+  }
+  return flags;
+}
+
 /**
  * The `E_DOCUMENT_TOO_COMPLEX` diagnostic for a source over a complexity
- * limit. One linear pass over the source, run before any parse: it reads
- * markdown structure only approximately (it does not know about code fences,
- * for example), erring towards counting more, never less.
+ * limit. Linear passes over the source, run before any parse: it reads
+ * markdown structure only approximately, erring towards counting more,
+ * never less. Fenced code it can follow exactly ({@link fencedCodeLines}) is
+ * not counted for brackets, delimiter runs or emphasis.
  * @param docId The document the source belongs to.
  * @param src The document source.
  * @param limits The bounds to check (every field set).
@@ -230,6 +450,7 @@ export function documentComplexityDiagnostic(
     );
 
   const n = src.length;
+  const fences = fencedCodeLines(src);
   let line = 1;
   let i = 0;
   let bracketDepth = 0;
@@ -290,15 +511,16 @@ export function documentComplexityDiagnostic(
         `indents a line more than ${limits.maxIndentColumns} columns (maxIndentColumns)`,
       );
     }
-    if (blank && quotesOnly) {
+    const fenced = fences[line - 1] ?? 0;
+    if ((blank && quotesOnly) || fenced === 2) {
       bracketDepth = 0;
       emphasis.fill(0);
     }
 
-    // Content: bracket nesting and delimiter runs, escapes skipped. A rule or
-    // fence line holds neither.
+    // Content: bracket nesting and delimiter runs, escapes skipped. Fenced
+    // code, a rule or a fence-like line holds neither.
     const contentStart = i;
-    if (!blank && isRuleOrFenceLine(src, i)) {
+    if (fenced !== 0 || (!blank && isRuleOrFenceLine(src, i))) {
       while (i < n && !isLineEnd(src.charCodeAt(i))) i += 1;
     }
     while (i < n) {
@@ -325,7 +547,12 @@ export function documentComplexityDiagnostic(
         // could also close); a run that can only close cancels open-only
         // openers of its own marker (and length, for `~`).
         const length = i - runStart;
-        const can = runCan(c, length, charBefore(src, runStart, contentStart), charAtPoint(src, i));
+        const can = delimiterRunCan(
+          c,
+          length,
+          charBefore(src, runStart, contentStart),
+          charAtPoint(src, i),
+        );
         const openOnly = c === 0x2a ? 0 : c === 0x5f ? 2 : length === 1 ? 4 : 5;
         const both = c === 0x2a ? 1 : c === 0x5f ? 3 : 6;
         if (can.open && can.close) emphasis[both] = (emphasis[both] ?? 0) + length;
