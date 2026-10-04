@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import type { BlockType } from "../blocks/types.js";
 import { resolveIncludes } from "../link/graph.js";
@@ -372,6 +374,171 @@ describe("walkProjectionParts", () => {
     const walk = { node: documentNode(doc, src), values, projectorId: "test" };
 
     expect(walkProjectionParts(walk, marking).join("")).toBe(walkProjection(walk, marking));
+  });
+});
+
+describe("onUnresolvedSource (#14)", () => {
+  /** A values map keyed by canonical key, for param-less refs to the given sources. */
+  function valuesFor(
+    entries: readonly (readonly [string, SourceValue])[],
+  ): ReadonlyMap<string, SourceValue> {
+    return new Map(
+      entries.map(([source, v]) => [canonicalKey({ kind: "source", source, params: {} }), v]),
+    );
+  }
+
+  /** `cash` resolved, `gone` is stale, and nothing else resolved. */
+  const partial = valuesFor([
+    ["cash", { value: "¥100", stale: false }],
+    ["gone", { value: "—", stale: true }],
+  ]);
+
+  type Piece =
+    | { readonly kind: "prose"; readonly text: string }
+    | { readonly kind: "source"; readonly source: string; readonly value: string }
+    | {
+        readonly kind: "unresolved";
+        readonly source: string;
+        readonly state: { readonly value?: string; readonly stale: boolean };
+        readonly raw: string;
+      }
+    | { readonly kind: "other" };
+
+  const structured: ProjectionWalkHandlers<Piece> = {
+    onProse: (text) => ({ kind: "prose", text }),
+    onSource: (value, ref) => ({ kind: "source", source: ref.source, value }),
+    onUnresolvedSource: (ref, state, raw) => ({
+      kind: "unresolved",
+      source: ref.source,
+      state,
+      raw,
+    }),
+    onBlock: () => ({ kind: "other" }),
+    onInclude: () => ({ kind: "other" }),
+  };
+
+  it("hands a missing ref and a stale ref each to one call, with its state and raw span", () => {
+    const src = "A {{source:cash}} B {{source:missing}} C {{source:gone}}\n";
+    const doc = parseDoc(src, {});
+    const pieces = walkProjectionParts(
+      { node: documentNode(doc, src), values: partial, projectorId: "test" },
+      structured,
+    );
+    expect(pieces).toEqual([
+      { kind: "prose", text: "A " },
+      { kind: "source", source: "cash", value: "¥100" },
+      { kind: "prose", text: " B " },
+      {
+        kind: "unresolved",
+        source: "missing",
+        state: { stale: false },
+        raw: "{{source:missing}}",
+      },
+      { kind: "prose", text: " C " },
+      {
+        kind: "unresolved",
+        source: "gone",
+        state: { value: "—", stale: true },
+        raw: "{{source:gone}}",
+      },
+      { kind: "prose", text: "\n" },
+    ]);
+  });
+
+  it("is called once per unresolved span, and never for a ref that resolved", () => {
+    const src = "{{source:missing}} {{source:cash}} {{source:missing}}\n";
+    const doc = parseDoc(src, {});
+    const calls: string[] = [];
+    walkProjectionParts(
+      { node: documentNode(doc, src), values: partial, projectorId: "test" },
+      {
+        ...structured,
+        onUnresolvedSource: (ref, state, raw, ctx) => {
+          calls.push(`${ref.source}:${raw}:${ctx.node.src.length}`);
+          return { kind: "unresolved" as const, source: ref.source, state, raw };
+        },
+      },
+    );
+    expect(calls).toEqual([
+      `missing:{{source:missing}}:${src.length}`,
+      `missing:{{source:missing}}:${src.length}`,
+    ]);
+  });
+
+  it("hands a param-bearing ref over too, params and raw span included", () => {
+    const src = "rsi {{source:rsi symbol=AAPL period=14}} end\n";
+    const doc = parseDoc(src, {});
+    const params: unknown[] = [];
+    const pieces = walkProjectionParts(
+      { node: documentNode(doc, src), values: new Map(), projectorId: "test" },
+      {
+        ...structured,
+        onUnresolvedSource: (ref, state, raw) => {
+          params.push(ref.params);
+          return { kind: "unresolved" as const, source: ref.source, state, raw };
+        },
+      },
+    );
+    expect(pieces[1]).toEqual({
+      kind: "unresolved",
+      source: "rsi",
+      state: { stale: false },
+      raw: "{{source:rsi symbol=AAPL period=14}}",
+    });
+    expect(params).toEqual([{ symbol: "AAPL", period: "14" }]);
+  });
+
+  it("keeps hookValues free of both refs: block hooks never see a placeholder", () => {
+    const seenByHook: Readonly<Record<string, string>>[] = [];
+    const probe: BlockType = {
+      type: "probe",
+      schema: { type: "object" },
+      project: {
+        test: (_attrs, values) => {
+          seenByHook.push(values);
+          return "probe";
+        },
+      },
+    };
+    const src = "{{source:cash}} {{source:missing}} {{source:gone}}\n\n```probe\nid: p\n```\n";
+    const doc = parseDoc(src, { blockTypes: new Set(["probe"]) });
+    const seenByHandler: Readonly<Record<string, string>>[] = [];
+    walkProjectionParts(
+      {
+        node: documentNode(doc, src),
+        values: partial,
+        projectorId: "test",
+        blockTypes: new Map([["probe", probe]]),
+      },
+      {
+        ...structured,
+        onUnresolvedSource: (ref, state, raw, ctx) => {
+          seenByHandler.push(ctx.hookValues);
+          return { kind: "unresolved" as const, source: ref.source, state, raw };
+        },
+      },
+    );
+    expect(seenByHook).toEqual([{ cash: "¥100" }]);
+    expect(seenByHandler).toEqual([{ cash: "¥100" }, { cash: "¥100" }]);
+  });
+
+  it("without the handler, leaves fin.md byte-identical to today (golden)", () => {
+    const fin = readFileSync(
+      fileURLToPath(new URL("../../test/fixtures/fin.md", import.meta.url)),
+      "utf8",
+    );
+    const doc = parseDoc(fin, {});
+    const node = documentNode(doc, fin);
+    // bank_balance is stale; monthly_spend did not resolve at all.
+    const values = valuesFor([["bank_balance", { value: "—", stale: true }]]);
+    const body = fin.slice(fin.indexOf("# Family Finance"));
+    expect(walkProjection({ node, values, projectorId: "test" }, marking)).toBe(body);
+    // A handler that renders each raw span reproduces the same bytes.
+    const viaHandler = walkProjection(
+      { node, values, projectorId: "test" },
+      { ...marking, onUnresolvedSource: (_ref, _state, raw) => raw },
+    );
+    expect(viaHandler).toBe(body);
   });
 });
 

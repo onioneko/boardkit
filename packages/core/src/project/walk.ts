@@ -47,7 +47,10 @@ import { canonicalKey } from "../resolve/resolve.js";
  * ## Fail-soft, by construction
  *
  * A stale or unresolved reference never reaches `onSource`: its span is left
- * verbatim, so a projector cannot fabricate data by accident. A block whose
+ * verbatim, so a projector cannot fabricate data by accident. A projector that
+ * needs to key every reference (a live view that fills a value in later)
+ * supplies {@link ProjectionWalkHandlers.onUnresolvedSource}, which receives
+ * such a span with its state instead; block hooks still never see it. A block whose
  * type is unregistered or declares no hook for this projector reaches `onBlock`
  * with `hooked: false` and the block's verbatim source in `raw`, which is what
  * lets each projector render its own fallback.
@@ -183,13 +186,48 @@ export interface ProjectionWalkHandlers<T = string> {
   onProse(prose: string, ctx: ProjectionWalkContext): T;
   /**
    * A `{{source:…}}` span whose value resolved and is not stale. Stale and
-   * unresolved refs never reach here — their spans stay verbatim.
+   * unresolved refs never reach here: they go to
+   * {@link ProjectionWalkHandlers.onUnresolvedSource} when it is supplied, and
+   * otherwise their spans stay verbatim.
    * @param value The resolved value text.
    * @param ref The reference as parsed (source id and params).
    * @param ctx The node being walked.
    * @returns What to emit in the reference's place.
    */
   onSource(value: string, ref: SourceRef, ctx: ProjectionWalkContext): T;
+  /**
+   * A `{{source:…}}` span whose value is stale or did not resolve at all.
+   * Optional: when omitted, such a span stays verbatim prose (part of the
+   * surrounding `onProse` run), exactly as before this handler existed.
+   *
+   * Supply it when the projector needs a keyed piece for every reference — a
+   * live view that fills a value in later, for one — and must tell a stale
+   * reference from prose that happens to read `{{source:x}}`. It changes only
+   * what this span becomes: {@link ProjectionWalkContext.hookValues} still
+   * omits stale and missing values, so block hooks keep rendering their own
+   * fallback and never see a placeholder.
+   * @param ref The reference as parsed (source id and params, param-bearing
+   *   refs included).
+   * @param state `{ stale: true, value }` when the resolution degraded, where
+   *   `value` is the source's degradation marker (not real data);
+   *   `{ stale: false }` with no `value` when the projection's values hold no
+   *   entry for this ref.
+   * @param raw The reference's verbatim source, `{{` to `}}`.
+   * @param ctx The node being walked.
+   * @returns What to emit in the reference's place; `raw` reproduces the
+   *   output a walk without this handler gives.
+   * @example
+   * ```ts
+   * onUnresolvedSource: (ref, state) =>
+   *   h("span", { "data-source": ref.source, "data-stale": String(state.stale) }),
+   * ```
+   */
+  onUnresolvedSource?(
+    ref: SourceRef,
+    state: { readonly value?: string; readonly stale: boolean },
+    raw: string,
+    ctx: ProjectionWalkContext,
+  ): T;
   /**
    * A typed block, with its hook already dispatched.
    * @param block The block, whether it had a hook, that hook's output, and its
@@ -299,6 +337,12 @@ type Rewrite =
       readonly end: number;
       readonly ref: SourceRef;
       readonly value: string;
+    }
+  | {
+      readonly start: number;
+      readonly end: number;
+      readonly ref: SourceRef;
+      readonly unresolved: { readonly value?: string; readonly stale: boolean };
     }
   | { readonly start: number; readonly end: number; readonly block: Block };
 
@@ -493,8 +537,16 @@ function proseSlice(src: string, start: number, end: number, escapes: readonly n
   return out + src.slice(cursor, end);
 }
 
-/** Every span this node replaces, in document order. */
-function planRewrites(walk: ProjectionWalkOptions, ranges: readonly SourceSpan[]): Rewrite[] {
+/**
+ * Every span this node replaces, in document order. A stale or missing ref is
+ * a rewrite only when `unresolved` is set (the projector supplied
+ * `onUnresolvedSource`); otherwise its span stays in the surrounding prose.
+ */
+function planRewrites(
+  walk: ProjectionWalkOptions,
+  ranges: readonly SourceSpan[],
+  unresolved: boolean,
+): Rewrite[] {
   const { doc } = walk.node;
   const rewrites: Rewrite[] = [];
 
@@ -510,7 +562,12 @@ function planRewrites(walk: ProjectionWalkOptions, ranges: readonly SourceSpan[]
   const index = indexOf(doc);
   for (const span of inRanges(index.sources, ranges)) {
     const value = walk.values.get(canonicalKey(span.ref));
-    if (value === undefined || value.stale) continue; // stale → verbatim (fail-soft)
+    if (value === undefined || value.stale) {
+      if (!unresolved) continue; // stale → verbatim (fail-soft)
+      const state = value === undefined ? { stale: false } : { value: value.value, stale: true };
+      rewrites.push({ start: span.start, end: span.end, ref: span.ref, unresolved: state });
+      continue;
+    }
     rewrites.push({ start: span.start, end: span.end, ref: span.ref, value: value.value });
   }
 
@@ -560,7 +617,7 @@ export function walkProjectionParts<T>(
   const { node, values, blockTypes, projectorId } = walk;
   const { doc, src } = node;
   const ranges = bodyRanges(walk);
-  const rewrites = planRewrites(walk, ranges);
+  const rewrites = planRewrites(walk, ranges, handlers.onUnresolvedSource !== undefined);
   const escapes = walk.unescapeRefs === true ? escapeOffsets(doc, src) : [];
   const ctx: ProjectionWalkContext = {
     node,
@@ -582,6 +639,13 @@ export function walkProjectionParts<T>(
       pushProse(cursor, rewrite.start);
       if ("include" in rewrite) {
         parts.push(handlers.onInclude(rewrite.include, ctx));
+      } else if ("unresolved" in rewrite) {
+        const raw = src.slice(rewrite.start, rewrite.end);
+        // Defined: an unresolved rewrite is planned only when the handler is.
+        const onUnresolved = handlers.onUnresolvedSource as NonNullable<
+          ProjectionWalkHandlers<T>["onUnresolvedSource"]
+        >;
+        parts.push(onUnresolved.call(handlers, rewrite.ref, rewrite.unresolved, raw, ctx));
       } else if ("ref" in rewrite) {
         parts.push(handlers.onSource(rewrite.value, rewrite.ref, ctx));
       } else {
