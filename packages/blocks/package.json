@@ -1,6 +1,6 @@
 {
   "name": "@onioneko/boardkit-blocks",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "BoardKit's reference block pack: checklist, status, metric, chart, form and rule block types for the BoardKit engine.",
   "keywords": [
     "markdown",
