@@ -758,6 +758,13 @@ export function createEngine(opts: EngineOptions): Engine {
   const retrySubscribers = new Set<DocId>();
   /** Documents whose shape changed since the running rebuild started. */
   const changedDuringBuild = new Set<DocId>();
+  /**
+   * The version of each document as the index last saw it: from a commit, or
+   * from a resolution pass that read it (`undefined`: known to be missing).
+   * Absent means not known. A commit that replaces some other version, or a
+   * pass that reads one, reveals a change made behind the engine's back.
+   */
+  const knownVersion = new Map<DocId, string | undefined>();
 
   function invalidateReverseIndex(): void {
     reverseIndexGeneration += 1;
@@ -767,6 +774,13 @@ export function createEngine(opts: EngineOptions): Engine {
   function markDirty(subscriber: DocId): void {
     dirtySubscribers.add(subscriber);
     invalidateReverseIndex();
+  }
+
+  /** Re-resolve the subscribers that read `docId`, other than `except`. */
+  function markReaders(docId: DocId, except?: DocId): void {
+    for (const subscriber of readersByDoc.get(docId) ?? []) {
+      if (subscriber !== except) markDirty(subscriber);
+    }
   }
 
   /** A commit may have changed `docId`'s include shape: re-resolve every subscriber that read it. */
@@ -838,6 +852,20 @@ export function createEngine(opts: EngineOptions): Engine {
         const resolved = await resolveIncludes(docId, opts.storage, parseOptions, linkOptions);
         const reads = new Set<DocId>([docId]);
         for (const e of resolved.includes) reads.add(e.toDoc);
+        // What this pass read: a version other than the one the index knew
+        // means the document changed behind the engine's back, and the other
+        // subscribers that read it saw the old content.
+        const loaded = new Set<DocId>();
+        for (const d of resolved.docs) {
+          loaded.add(d.docId);
+          const version = docVersion(d.src);
+          if (knownVersion.has(d.docId) && knownVersion.get(d.docId) !== version) {
+            markReaders(d.docId, docId);
+          }
+          knownVersion.set(d.docId, version);
+        }
+        // Read but not loaded (missing, unreadable, over a limit): not known.
+        for (const read of reads) if (!loaded.has(read)) knownVersion.delete(read);
         link = { edges: resolved.includes.filter((e) => e.status === "ok"), reads };
       } catch {
         // Fail-soft: the board's own projection reports the error when read.
@@ -1055,6 +1083,12 @@ export function createEngine(opts: EngineOptions): Engine {
    */
   function onCommit(commit: CommitEffect): void {
     const { docId, src, version, parsed } = commit;
+    // Replacing a version the index did not know: the document changed
+    // outside the engine first, so its shape may differ from what the index
+    // saw even when this commit kept the shape of what it replaced.
+    const seen =
+      knownVersion.has(docId) && knownVersion.get(docId) === commit.replacedVersion;
+    knownVersion.set(docId, version);
     const old = parseHashByDoc.get(docId);
     if (old !== undefined && old !== version) parseCache.delete(old);
     if (src !== undefined && version !== undefined && parsed !== undefined) {
@@ -1063,7 +1097,7 @@ export function createEngine(opts: EngineOptions): Engine {
       parseHashByDoc.delete(docId);
     }
     invalidateMergeForDoc(docId);
-    if (commit.shapeChanged) includeShapeChanged(docId);
+    if (commit.shapeChanged || !seen) includeShapeChanged(docId);
   }
 
   /** LINK reads documents through the parse cache and the size limit. */
@@ -1172,6 +1206,7 @@ export function createEngine(opts: EngineOptions): Engine {
       // known to be unchanged, so its readers are resolved again. A
       // suppressed self-echo left content unchanged and needs nothing.
       invalidateMergeForDoc(outcome.docId);
+      knownVersion.delete(outcome.docId);
       includeShapeChanged(outcome.docId);
     }
     return outcome;

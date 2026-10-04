@@ -196,6 +196,14 @@ export interface CommitEffect {
   readonly src: string | undefined;
   /** The content hash of `src`; `undefined` after a removal. */
   readonly version: string | undefined;
+  /**
+   * The content hash of the source the commit replaced, as read inside the
+   * lock; `undefined` when the document did not exist (a create or an
+   * import). The engine compares it with the version it last knew: when they
+   * differ, the document changed outside the engine first, and the commit
+   * counts as changing its shape whatever `shapeChanged` says.
+   */
+  readonly replacedVersion: string | undefined;
   /** The pipeline's parse of `src`, when it made one. */
   readonly parsed?: ParsedDoc;
   /**
@@ -546,8 +554,9 @@ export async function writeDoc(
           diagnostic("E_DOC_MISSING", `document not found: ${docId}`),
         ]);
       }
-      if (decideFullText(docVersion(current), guards) === "reject") {
-        return rejection("stale-version", [], docVersion(current));
+      const currentVersion = docVersion(current);
+      if (decideFullText(currentVersion, guards) === "reject") {
+        return rejection("stale-version", [], currentVersion);
       }
       const overLimit = parseLimitRejection(deps, docId, text, "write");
       if (overLimit !== undefined) return overLimit;
@@ -565,6 +574,7 @@ export async function writeDoc(
         docId,
         src: validated.src,
         version,
+        replacedVersion: currentVersion,
         ...(after !== undefined ? { parsed: after } : {}),
         shapeChanged: shapeChanged(before, after),
       });
@@ -747,6 +757,7 @@ export async function patchDoc(
         docId,
         src,
         version,
+        replacedVersion: currentVersion,
         ...(after !== undefined ? { parsed: after } : {}),
         shapeChanged: shapeChanged(currentParsed, after),
       });
@@ -810,6 +821,7 @@ export async function createDoc(
         docId,
         src: validated.src,
         version,
+        replacedVersion: undefined,
         ...(after !== undefined ? { parsed: after } : {}),
         shapeChanged: true,
       });
@@ -895,7 +907,13 @@ export async function importDoc(
       await deps.storage.writeAtomic(docId, content);
       const version = docVersion(content);
       // Not parsed: an import stores bytes the limits may refuse to parse.
-      deps.onCommit?.({ docId, src: content, version, shapeChanged: true });
+      deps.onCommit?.({
+        docId,
+        src: content,
+        version,
+        replacedVersion: undefined,
+        shapeChanged: true,
+      });
       const { records, appended } = await emit(deps, docId, version, [
         { t: deps.clock(), type: "doc.created", docId, by: writer, imported: true },
       ]);
@@ -940,9 +958,15 @@ export async function removeDoc(
         ]);
       }
       await deps.storage.delete(docId);
-      deps.onCommit?.({ docId, src: undefined, version: undefined, shapeChanged: true });
       // `version` is the removed content's hash: the last committed state.
       const version = docVersion(existing);
+      deps.onCommit?.({
+        docId,
+        src: undefined,
+        version: undefined,
+        replacedVersion: version,
+        shapeChanged: true,
+      });
       const { records, appended } = await emit(deps, docId, version, [
         { t: deps.clock(), type: "doc.removed", docId, by: writer },
       ]);
