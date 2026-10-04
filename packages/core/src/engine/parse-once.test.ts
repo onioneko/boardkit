@@ -103,6 +103,29 @@ const deep = (i: number) => `# Deep ${i}\n\nDeep prose ${i}.\n`;
 const board = (i: number) => `# Board ${i}\n\n{{include:common}}\n\n{{include:leaf${i}}}\n`;
 
 /**
+ * The reads of one full include-index rebuild in the realistic setup: every
+ * subscribed board's closure (board, `common`, leaf, deep), so `common` four
+ * times. The rebuild reads; it parses and scans nothing it has seen.
+ */
+const REBUILD_READS: Readonly<Record<string, number>> = {
+  ...Object.fromEntries(
+    [0, 1, 2, 3].flatMap((i) => [
+      [`board${i}`, 1],
+      [`leaf${i}`, 1],
+      [`deep${i}`, 1],
+    ]),
+  ),
+  common: 4,
+};
+
+/** The rebuild's reads plus `extra` reads per document by the write itself. */
+const rebuildPlus = (extra: Record<string, number>): Record<string, number> => {
+  const out: Record<string, number> = { ...REBUILD_READS };
+  for (const [doc, n] of Object.entries(extra)) out[doc] = (out[doc] ?? 0) + n;
+  return out;
+};
+
+/**
  * Four subscribed boards. Each includes `common` and its own `leaf<i>`, which
  * includes `deep<i>`: four documents per closure, ten documents in all.
  */
@@ -152,11 +175,16 @@ function manualSource(): WatchSource {
 }
 
 describe("one write parses its content once (#3)", () => {
-  it("a full-text write parses and scans once and reads only its own document", async () => {
+  it("a full-text write parses and scans once; the index rebuild before it re-reads but parses nothing", async () => {
     const r = await realistic();
     const w = await r.engine.write("leaf1", { writer, fullText: leaf(1, "prose edit") });
     expect(w.ok).toBe(true);
-    expect(r.snapshot()).toEqual({ parses: 1, scans: 1, reads: 1, readsByDoc: { leaf1: 1 } });
+    expect(r.snapshot()).toEqual({
+      parses: 1,
+      scans: 1,
+      reads: 17,
+      readsByDoc: rebuildPlus({ leaf1: 1 }),
+    });
     // Delivery still reaches the board that includes the written document.
     expect(r.seen.board1).toContain("doc.updated:leaf1");
     expect(r.seen.board0).not.toContain("doc.updated:leaf1");
@@ -176,7 +204,12 @@ describe("one write parses its content once (#3)", () => {
     const r = await realistic();
     const w = await r.engine.patch("leaf2", "c2", { writer, attrs: { items: ["a", "b"] } });
     expect(w.ok).toBe(true);
-    expect(r.snapshot()).toEqual({ parses: 1, scans: 1, reads: 1, readsByDoc: { leaf2: 1 } });
+    expect(r.snapshot()).toEqual({
+      parses: 1,
+      scans: 1,
+      reads: 17,
+      readsByDoc: rebuildPlus({ leaf2: 1 }),
+    });
     r.reset();
     const p = await r.engine.projection("board2", "text", {});
     expect(p.ok).toBe(true);
@@ -190,7 +223,12 @@ describe("one write parses its content once (#3)", () => {
       { writer },
     );
     expect(w.ok).toBe(true);
-    expect(r.snapshot()).toEqual({ parses: 1, scans: 1, reads: 2, readsByDoc: { leaf3: 2 } });
+    expect(r.snapshot()).toEqual({
+      parses: 1,
+      scans: 1,
+      reads: 18,
+      readsByDoc: rebuildPlus({ leaf3: 2 }),
+    });
   });
 
   it("a create parses and scans once, and the next projection of it parses nothing", async () => {
@@ -238,49 +276,40 @@ describe("one write parses its content once (#3)", () => {
 /** The realistic setup, under its own name for the intent test. */
 const r0 = realistic;
 
-describe("the reverse include index is kept incrementally (#3)", () => {
-  it("a write that changes no include edge reads no other document", async () => {
+describe("the reverse include index is rebuilt through the seeded parse cache (#3)", () => {
+  it("each write rebuilds the index from every closure, and parses only its own content", async () => {
     const r = await realistic();
     await r.engine.write("common", { writer, fullText: "# Common\n\nShared, edited.\n" });
     await r.engine.write("deep3", { writer, fullText: deep(3).replace("prose", "words") });
-    expect(r.snapshot().readsByDoc).toEqual({ common: 1, deep3: 1 });
+    const both = rebuildPlus({ common: 1, deep3: 1 });
+    for (const [doc, n] of Object.entries(REBUILD_READS)) both[doc] = (both[doc] ?? 0) + n;
+    expect(r.snapshot()).toEqual({ parses: 2, scans: 2, reads: 34, readsByDoc: both });
     expect(r.seen.board3).toContain("doc.updated:deep3");
     for (const b of ["board0", "board1", "board2", "board3"]) {
       expect(r.seen[b]).toContain("doc.updated:common");
     }
   });
 
-  it("a write that adds an include re-reads only the subscribers that read the document", async () => {
+  it("a write that adds an include is seen by the next write's rebuild", async () => {
     const r = await realistic();
     await r.storage.writeAtomic(asDocId("extra"), "# Extra\n\nx\n");
-    r.reset();
     const added = `${leaf(1, "v0")}\n{{include:extra}}\n`;
     expect((await r.engine.write("leaf1", { writer, fullText: added })).ok).toBe(true);
-    expect(r.snapshot().readsByDoc).toEqual({ leaf1: 1 });
     r.reset();
     const probe = await r.engine.write("extra", { writer, fullText: "# Extra\n\ny\n" });
     expect(probe.ok).toBe(true);
-    // board1's closure is re-resolved (5 reads); the other boards are not read.
-    expect(r.snapshot().readsByDoc).toEqual({
-      extra: 2,
-      board1: 1,
-      common: 1,
-      leaf1: 1,
-      deep1: 1,
+    // The rebuild reads `extra` for board1's closure and parses it (it was
+    // never read before); the write parses its new content.
+    expect(r.snapshot()).toEqual({
+      parses: 2,
+      scans: 2,
+      reads: 18,
+      readsByDoc: rebuildPlus({ extra: 2 }),
     });
     expect(r.seen.board1).toContain("doc.updated:extra");
     for (const b of ["board0", "board2", "board3"]) {
       expect(r.seen[b]).not.toContain("doc.updated:extra");
     }
-  });
-
-  it("a write to a document no subscriber reads re-reads nothing", async () => {
-    const r = await realistic();
-    await r.engine.createDoc("loose", { writer, content: "# Loose\n" });
-    r.reset();
-    await r.engine.write("loose", { writer, fullText: "# Loose\n\n{{include:common}}\n" });
-    await r.engine.write("loose", { writer, fullText: "# Loose\n" });
-    expect(r.snapshot().readsByDoc).toEqual({ loose: 2 });
   });
 });
 

@@ -679,12 +679,6 @@ function resolveWatchTrue(storage: Storage): WatchOptions {
  * });
  * ```
  */
-/**
- * The include index's state for a document that was read but not loaded.
- * Not a content hash (those are 64 hex digits), so it never equals a version.
- */
-const UNLOADED = "unloaded";
-
 export function createEngine(opts: EngineOptions): Engine {
   const clock = opts.clock ?? (() => new Date().toISOString());
   const projectors = new Map<string, Projector<unknown>>(
@@ -728,119 +722,41 @@ export function createEngine(opts: EngineOptions): Engine {
   // to find every subscribed document whose projection inputs contain that
   // docId — the set {S} ∪ (docs transitively included by S).
   //
-  // Maintenance is incremental. Each subscribed document's last resolution
-  // is kept (`subscriberLinks`): its `ok` edges and every document the pass
-  // read (the board and every include target, resolved or not). Only those
-  // documents can change its edges, so a commit to document X marks dirty
-  // just the subscribers whose pass read X (`readersByDoc`), and only when
-  // the commit may have changed X's include shape (its include references,
-  // its section ids, or whether it exists and parses at all): a write that
-  // keeps the shape marks nothing. A new subscriber is dirty. Dirty
-  // subscribers are re-resolved lazily at the start of the next write's
-  // commit pipeline, before that write emits anything, and the index is
-  // rebuilt in memory from every subscriber's kept edges. Delivery is
-  // therefore synchronous and always reads an index consistent with
-  // pre-write storage: a new include edge written by write N is visible to
-  // deliveries of write N+1, and a doc.removed event is delivered against the
-  // pre-removal graph. Inputs come only from the include graph
-  // (link/graph.ts): nothing else is consulted. The index sees the commits
-  // the engine makes and the external writes it handles; a document changed
-  // in storage behind the engine's back is seen once it is next committed or
-  // reported to `externalWrite`.
+  // Maintenance (chosen mechanism — "rebuilt after EMIT"): the index is
+  // invalidated when a subscriber is added or removed, after every commit and
+  // after every handled external write, then rebuilt in full lazily at the
+  // start of the next write's commit pipeline, before that write emits
+  // anything. Delivery is therefore synchronous and always reads an index
+  // consistent with pre-write storage: a new include edge written by write N
+  // is visible to deliveries of write N+1, and a doc.removed event is
+  // delivered against the pre-removal graph. Inputs come only from the
+  // include graph (link/graph.ts): nothing else is consulted. A rebuild reads
+  // every subscriber's include closure, but parses go through the parse
+  // cache, which writes seed: unchanged content is neither parsed nor scanned
+  // again.
   let reverseIndex: ReadonlyMap<DocId, ReadonlySet<DocId>> = new Map();
   let reverseIndexGeneration = 0;
   let reverseIndexBuiltGeneration = -1;
   let reverseIndexBuild: Promise<void> | undefined;
-  /** Each resolved subscriber's `ok` edges and the documents its pass read. */
-  const subscriberLinks = new Map<
-    DocId,
-    { readonly edges: readonly ResolvedInclude[]; readonly reads: ReadonlySet<DocId> }
-  >();
-  /** Document → the subscribers whose last pass read it. */
-  const readersByDoc = new Map<DocId, Set<DocId>>();
-  /** Subscribers to re-resolve on the next rebuild. */
-  const dirtySubscribers = new Set<DocId>();
-  /** Subscribers whose last resolution threw: retried at the next write. */
-  const retrySubscribers = new Set<DocId>();
-  /** Documents whose shape changed since the running rebuild started. */
-  const changedDuringBuild = new Set<DocId>();
   /**
-   * The state of each document as the index last saw it, from a commit or
-   * from a resolution pass that read it: its version, or {@link UNLOADED}
-   * when it was missing or could not be loaded (unreadable, over a limit,
-   * a parse that threw), which resolves the same way. Absent means not
-   * known. A commit that replaces some other state, or a pass that observes
-   * one, reveals a change made behind the engine's back.
+   * Set when the last rebuild could not read a document (a board or an
+   * include target threw: EIO, EACCES, a network glitch). That read may
+   * succeed next time, and nothing else would invalidate the index if the
+   * write that triggered the rebuild is then rejected: rebuild once more
+   * before the next write. One retry per write, so a document that never
+   * reads costs one rebuild per write, never a loop.
    */
-  const knownVersion = new Map<DocId, string>();
-  /** Record what a pass for `reader` observed of `docId`; a change re-resolves its other readers. */
-  function observe(docId: DocId, state: string, reader: DocId): void {
-    // Absent counts as a change: nothing guarantees the other readers saw this state.
-    if (knownVersion.get(docId) !== state) markReaders(docId, reader);
-    knownVersion.set(docId, state);
-  }
+  let rebuildAfterReadFailure = false;
 
   function invalidateReverseIndex(): void {
     reverseIndexGeneration += 1;
   }
 
-  /** Mark `subscriber` for re-resolution. */
-  function markDirty(subscriber: DocId): void {
-    dirtySubscribers.add(subscriber);
-    invalidateReverseIndex();
-  }
-
-  /** Re-resolve the subscribers that read `docId`, other than `except`. */
-  function markReaders(docId: DocId, except?: DocId): void {
-    for (const subscriber of readersByDoc.get(docId) ?? []) {
-      if (subscriber !== except) markDirty(subscriber);
-    }
-  }
-
-  /** A commit may have changed `docId`'s include shape: re-resolve every subscriber that read it. */
-  function includeShapeChanged(docId: DocId): void {
-    if (reverseIndexBuild !== undefined) changedDuringBuild.add(docId);
-    for (const subscriber of readersByDoc.get(docId) ?? []) markDirty(subscriber);
-  }
-
-  /** Re-resolve every subscriber (a change that can move any include edge). */
-  function markAllDirty(): void {
-    for (const subscriber of scopedSubscribers.keys()) dirtySubscribers.add(subscriber);
-    invalidateReverseIndex();
-  }
-
-  /** Replace (or, with `undefined`, drop) a subscriber's kept resolution. */
-  function setSubscriberLink(
-    subscriber: DocId,
-    link:
-      | { readonly edges: readonly ResolvedInclude[]; readonly reads: ReadonlySet<DocId> }
-      | undefined,
-  ): void {
-    for (const doc of subscriberLinks.get(subscriber)?.reads ?? []) {
-      const readers = readersByDoc.get(doc);
-      readers?.delete(subscriber);
-      if (readers?.size === 0) readersByDoc.delete(doc);
-    }
-    if (link === undefined) {
-      subscriberLinks.delete(subscriber);
-      return;
-    }
-    subscriberLinks.set(subscriber, link);
-    for (const doc of link.reads) {
-      let readers = readersByDoc.get(doc);
-      if (readers === undefined) {
-        readers = new Set();
-        readersByDoc.set(doc, readers);
-      }
-      readers.add(subscriber);
-    }
-  }
-
-  /** Bring the reverse include index up to date (generation-guarded against concurrent writes). */
+  /** Rebuild the reverse include index if it is stale (generation-guarded against concurrent writes). */
   async function ensureReverseIndex(): Promise<void> {
-    if (retrySubscribers.size > 0) {
-      for (const subscriber of retrySubscribers) markDirty(subscriber);
-      retrySubscribers.clear();
+    if (rebuildAfterReadFailure) {
+      rebuildAfterReadFailure = false;
+      invalidateReverseIndex();
     }
     while (reverseIndexBuiltGeneration < reverseIndexGeneration) {
       const target = reverseIndexGeneration;
@@ -854,52 +770,24 @@ export function createEngine(opts: EngineOptions): Engine {
   }
 
   async function buildReverseIndexNow(target: number): Promise<void> {
-    const todo = [...dirtySubscribers];
-    dirtySubscribers.clear();
-    changedDuringBuild.clear();
-    for (const docId of todo) {
-      if (!scopedSubscribers.has(docId)) continue;
-      let link: { edges: ResolvedInclude[]; reads: Set<DocId> };
+    const subscribed = [...scopedSubscribers.keys()];
+    const edges: ResolvedInclude[] = [];
+    for (const docId of subscribed) {
       // One subscriber whose board cannot be read contributes no edges; it
       // must never fail the write that triggered the rebuild (or any other).
       try {
-        // Every document the pass reads is observed: a version, or UNLOADED
-        // when it could not be loaded. A state other than the one the index
-        // knew means the document changed behind the engine's back, and the
-        // other subscribers that read it saw the old content.
-        const resolved = await resolveIncludes(docId, opts.storage, parseOptions, {
-          ...linkOptions,
-          onRead: (read, src) =>
-            observe(read, src === undefined ? UNLOADED : docVersion(src), docId),
-        });
-        const reads = new Set<DocId>([docId]);
-        for (const e of resolved.includes) reads.add(e.toDoc);
-        link = { edges: resolved.includes.filter((e) => e.status === "ok"), reads };
-        // An include target that could not be read (EIO, EACCES, a network
-        // glitch) may read next time, and nothing would commit to tell us:
-        // try again at the next write. A target outside the workspace is
-        // diagnosed differently and is final.
-        if (resolved.diagnostics.some((d) => d.code === "E_INCLUDE_UNREADABLE")) {
-          retrySubscribers.add(docId);
+        const link = await resolveIncludes(docId, opts.storage, parseOptions, linkOptions);
+        for (const e of link.includes) edges.push(e);
+        // A target outside the workspace is diagnosed differently and is final.
+        if (link.diagnostics.some((d) => d.code === "E_INCLUDE_UNREADABLE")) {
+          rebuildAfterReadFailure = true;
         }
       } catch {
         // Fail-soft: the board's own projection reports the error when read.
-        link = { edges: [], reads: new Set([docId]) };
-        retrySubscribers.add(docId);
-      }
-      // Unsubscribed while resolving: nothing to keep.
-      if (!scopedSubscribers.has(docId)) continue;
-      setSubscriberLink(docId, link);
-      // A commit that landed while this pass was reading may have been missed
-      // by it (and, before this point, could not mark it): resolve it again.
-      for (const changed of changedDuringBuild) {
-        if (link.reads.has(changed)) {
-          markDirty(docId);
-          break;
-        }
+        rebuildAfterReadFailure = true;
       }
     }
-    reverseIndex = buildReverseIndex([...subscriberLinks.values()].flatMap((l) => l.edges));
+    reverseIndex = buildReverseIndex(edges);
     reverseIndexBuiltGeneration = target;
   }
 
@@ -1091,14 +979,6 @@ export function createEngine(opts: EngineOptions): Engine {
   }
 
   /**
-   * After every commit (engine writes of all kinds), before its events are
-   * appended: seed the parse cache with the write's own parse of what it
-   * stored, so the next read does not parse it again; drop the replaced
-   * content's parse and the merged trees involving the document; and mark
-   * the subscribers whose include closure read it, when its include shape may
-   * have changed.
-   */
-  /**
    * The pipeline dependencies for one write call. Its `onCommit` knows the
    * block registry the call started under: a `registerBlock` during the call
    * changes fence recognition, so the write's parse may be stale by the time
@@ -1109,18 +989,17 @@ export function createEngine(opts: EngineOptions): Engine {
     return { ...deps, onCommit: (commit) => onCommit(commit, epoch) };
   }
 
+  /**
+   * After every commit (engine writes of all kinds), before its events are
+   * appended: seed the parse cache with the write's own parse of what it
+   * stored, so the next read (the include-index rebuild included) does not
+   * parse it again; drop the replaced content's parse and the merged trees
+   * involving the document; and invalidate the reverse include index.
+   */
   function onCommit(commit: CommitEffect, epoch = registryEpoch): void {
     const { docId, src, version } = commit;
-    // A parse made before a `registerBlock` is not seeded, and its shape is
-    // not trusted.
-    const current = epoch === registryEpoch;
-    const parsed = current ? commit.parsed : undefined;
-    // Replacing a version the index did not know: the document changed
-    // outside the engine first, so its shape may differ from what the index
-    // saw even when this commit kept the shape of what it replaced.
-    const seen =
-      knownVersion.has(docId) && knownVersion.get(docId) === (commit.replacedVersion ?? UNLOADED);
-    knownVersion.set(docId, version ?? UNLOADED);
+    // A parse made before a `registerBlock` is not seeded.
+    const parsed = epoch === registryEpoch ? commit.parsed : undefined;
     const old = parseHashByDoc.get(docId);
     if (old !== undefined && old !== version) parseCache.delete(old);
     if (src !== undefined && version !== undefined && parsed !== undefined) {
@@ -1129,7 +1008,7 @@ export function createEngine(opts: EngineOptions): Engine {
       parseHashByDoc.delete(docId);
     }
     invalidateMergeForDoc(docId);
-    if (commit.shapeChanged || !seen || !current) includeShapeChanged(docId);
+    invalidateReverseIndex();
   }
 
   /** LINK reads documents through the parse cache and the size limit. */
@@ -1227,20 +1106,12 @@ export function createEngine(opts: EngineOptions): Engine {
     if (externalHandler === undefined) return undefined; // fail-soft: no watch configured
     await ensureReverseIndex();
     const outcome = await externalHandler.handle(watchPath);
-    if (outcome === undefined) {
-      // Not a document the handler events: a path outside the workspace, or
-      // a document deleted outside the engine. Which document is not known,
-      // so every subscriber is resolved again.
-      markAllDirty();
-    } else if (outcome.external) {
-      // A genuine external write: its parse (when it fit the limits) is
-      // already cached by content, through `parseCached`. Its shape is not
-      // known to be unchanged, so its readers are resolved again. A
-      // suppressed self-echo left content unchanged and needs nothing.
-      invalidateMergeForDoc(outcome.docId);
-      knownVersion.delete(outcome.docId);
-      includeShapeChanged(outcome.docId);
-    }
+    invalidateReverseIndex();
+    // A genuine external write (changed content) drops the merged trees
+    // involving the document; its parse, when it fit the limits, is already
+    // cached by content through `parseCached`. A suppressed self-echo
+    // (external: false) left content unchanged.
+    if (outcome?.external) invalidateMergeForDoc(outcome.docId);
     return outcome;
   }
 
@@ -1309,20 +1180,17 @@ export function createEngine(opts: EngineOptions): Engine {
     if (set === undefined) {
       set = new Set();
       scopedSubscribers.set(docId, set);
-      // A new subscriber's include edges are not yet in the reverse index.
-      markDirty(docId);
     }
     set.add(handler);
+    // A new subscriber's include edges are not yet in the reverse index.
+    invalidateReverseIndex();
     return () => {
       const handlers = scopedSubscribers.get(docId);
       if (handlers === undefined) return;
       handlers.delete(handler);
       if (handlers.size > 0) return;
       scopedSubscribers.delete(docId);
-      // Its edges leave the index at the next rebuild (no storage read).
-      setSubscriberLink(docId, undefined);
-      dirtySubscribers.delete(docId);
-      retrySubscribers.delete(docId);
+      // Its edges leave the index at the next rebuild.
       invalidateReverseIndex();
     };
   }
@@ -1681,8 +1549,8 @@ export function createEngine(opts: EngineOptions): Engine {
       parseHashByDoc.clear();
       for (const key of [...mergeCache.keys()]) evictMergeKey(key);
       // Fence recognition decides which references are include references,
-      // so any document's include shape may have changed.
-      markAllDirty();
+      // so any include edge may have moved.
+      invalidateReverseIndex();
     },
   };
 }

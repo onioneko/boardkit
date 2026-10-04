@@ -8,16 +8,21 @@ import type { WatchSource } from "../watch/source.js";
 import { createEngine } from "./engine.js";
 
 /**
- * #3: the reverse include index is kept incrementally, and the parse cache is
- * seeded by writes. Both must stay exactly as correct as rebuilding from
- * scratch. Seeded random runs of creates, writes, imports, removes, external
- * writes and deletes (through `externalWrite`), subscribes and unsubscribes
- * check after every step that:
+ * #3: the parse cache is seeded by writes, and the reverse include index is
+ * rebuilt through it. Both must stay exactly as correct as rebuilding from
+ * scratch with no caches. Seeded random runs of creates, writes, imports,
+ * removes, external writes and deletes (through `externalWrite`), subscribes
+ * and unsubscribes check:
  *
- * - a write to each document reaches exactly the subscribers a from-scratch
- *   index over current storage says it should;
- * - every projection matches that of a fresh engine (no caches) on the same
- *   storage.
+ * - after every step with no edit pending, that the engine's include index
+ *   (a read-only snapshot) equals one built from scratch over current storage;
+ * - after every step (some steps in `pending` mode), that a write to each
+ *   document reaches exactly the subscribers the from-scratch index says it
+ *   should, and that every projection matches that of a fresh engine (no
+ *   caches) on the same storage.
+ *
+ * This harness and its snapshot oracle are the bar for any future incremental
+ * include index.
  */
 
 const DOCS = ["a", "b", "c", "d", "e"] as const;
@@ -375,10 +380,11 @@ async function run(seed: number, steps: number, mode: Mode = "v1"): Promise<void
 const REGRESSION_SEEDS = [26, 41, 158, 216, 499, 606, 805, 893];
 
 /**
- * Seeds of the `full` generator a review found failing (R1-1, a pass that
- * loads a document another pass saw unloaded), at the step count it used.
+ * Seeds of the `full` generator found failing, at 60 steps: 900 (R1-1, a
+ * pass that loads a document another pass saw unloaded) and 194 (a rebuild
+ * that could not read a document, before a write that was then rejected).
  */
-const FULL_REGRESSION_SEEDS = [900];
+const FULL_REGRESSION_SEEDS = [900, 194];
 
 /**
  * Seeds of the `pending` generator a review's finding fails (R2-1, a
@@ -396,7 +402,7 @@ const PENDING_REGRESSION_SEEDS = [914];
 const FULL_SEEDS = Number(process.env.BOARDKIT_SEQUENCE_SEEDS ?? 200);
 const FULL_STEPS = Number(process.env.BOARDKIT_SEQUENCE_STEPS ?? 60);
 
-describe("the incremental reverse index and the seeded parse cache match a rebuild", () => {
+describe("the reverse include index and the seeded parse cache match a rebuild", () => {
   for (const seed of FULL_REGRESSION_SEEDS) {
     it(`regression seed ${seed} (full, 60 steps)`, async () => {
       await run(seed, 60, "full");

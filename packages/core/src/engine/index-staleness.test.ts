@@ -208,6 +208,41 @@ describe("I3: an include target that could not be read once", () => {
     await engine.write("y", { writer, fullText: "# Y\n\n2\n" });
     expect(seen).toContain("y");
   });
+
+  for (const failing of ["board", "x"]) {
+    it(`is resolved again even when the write whose rebuild could not read ${failing} is rejected`, async () => {
+      const inner = createMemStorage();
+      let fail = false;
+      const storage: Storage = {
+        ...inner,
+        read: async (docId: DocId) => {
+          if (fail && docId === failing) throw Object.assign(new Error("EIO"), { code: "EIO" });
+          return inner.read(docId);
+        },
+      };
+      const engine = createEngine({ storage, clock });
+      const seen: string[] = [];
+      await inner.writeAtomic(asDocId("board"), "# Board\n\n{{include:x}}\n");
+      await inner.writeAtomic(asDocId("x"), "# X\n\n{{include:y}}\n");
+      await inner.writeAtomic(asDocId("y"), "# Y\n");
+      await inner.writeAtomic(asDocId("z"), "# Z\n");
+      engine.subscribe("board", (evt) => seen.push(String(evt.docId)));
+
+      fail = true;
+      // The rebuild before this write cannot read `failing`; the write is
+      // rejected, so it commits nothing that would invalidate the index.
+      const stale = await engine.write("z", {
+        writer,
+        fullText: "# Z\n\n1\n",
+        expectedVersion: "nope",
+      });
+      expect(stale.ok).toBe(false);
+      fail = false;
+
+      await engine.write("y", { writer, fullText: "# Y\n\n2\n" });
+      expect(seen).toContain("y");
+    });
+  }
 });
 
 describe("M1: a validate hook that changes the attrs it is given", () => {
@@ -281,6 +316,63 @@ describe("R1-1: a pass sees a document change between unloaded and loaded", () =
     seen.length = 0;
     await engine.write("y", { writer, fullText: "# Y\n\n3\n" });
     expect(seen).toEqual([]);
+  });
+});
+
+describe("R1-1 (R3-3 variant): documents the engine created, one removed out of band", () => {
+  it("a subscriber stops receiving events through a document removed behind the engine's back", async () => {
+    const storage = createMemStorage();
+    const engine = createEngine({ storage, clock });
+    const seen: string[] = [];
+    const create = async (id: string, content: string) =>
+      expect((await engine.createDoc(id, { writer, content })).ok).toBe(true);
+    await create("a", "# A\n\n{{include:x}}\n");
+    await create("b", "# B\n\n{{include:x}}\n");
+    await create("x", "# X\n\n{{include:y}}\n");
+    await create("y", "# Y\n");
+    engine.subscribe("a", (evt) => seen.push(`a:${String(evt.docId)}`));
+    engine.subscribe("b", (evt) => seen.push(`b:${String(evt.docId)}`));
+    await engine.write("y", { writer, fullText: "# Y\n\n1\n" }); // both read x → y
+    expect(seen).toEqual(expect.arrayContaining(["a:y", "b:y"]));
+
+    await storage.delete?.(asDocId("x")); // removed out of band, no watch
+    await engine.write("b", { writer, fullText: "# B\n\n{{include:x}}\n\n## more\n" });
+    await engine.write("y", { writer, fullText: "# Y\n\n2\n" });
+
+    seen.length = 0;
+    await engine.write("y", { writer, fullText: "# Y\n\n3\n" });
+    expect(seen).toEqual([]);
+  });
+});
+
+describe("R3-1: a document whose content changes on every read", () => {
+  it("does not hold up a write: two subscribers that include it read it a bounded number of times", async () => {
+    const inner = createMemStorage();
+    let xReads = 0;
+    const storage: Storage = {
+      ...inner,
+      // A generated document (a status or clock doc): new bytes on every read.
+      // Capped so that a regression fails the count instead of hanging.
+      read: async (docId: DocId) => {
+        if (docId !== "x") return inner.read(docId);
+        xReads += 1;
+        return `# X\n\ntick ${Math.min(xReads, 500)}\n`;
+      },
+    };
+    const engine = createEngine({ storage, clock });
+    await inner.writeAtomic(asDocId("a"), "# A\n\n{{include:x}}\n");
+    await inner.writeAtomic(asDocId("b"), "# B\n\n{{include:x}}\n");
+    await inner.writeAtomic(asDocId("z"), "# Z\n");
+    engine.subscribe("a", () => {});
+    engine.subscribe("b", () => {});
+
+    xReads = 0;
+    expect((await engine.write("z", { writer, fullText: "# Z\n\n1\n" })).ok).toBe(true);
+    // One rebuild: each subscriber's pass reads x once.
+    expect(xReads).toBe(2);
+    xReads = 0;
+    expect((await engine.write("z", { writer, fullText: "# Z\n\n2\n" })).ok).toBe(true);
+    expect(xReads).toBe(2);
   });
 });
 
