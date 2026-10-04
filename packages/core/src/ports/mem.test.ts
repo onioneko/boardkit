@@ -3,6 +3,13 @@ import { asDocId } from "../model/ids.js";
 import { createMemStorage } from "./mem.js";
 
 describe("mem storage", () => {
+  it("reports a document's size in bytes, undefined when missing", async () => {
+    const storage = createMemStorage();
+    await storage.writeAtomic(asDocId("a"), "# Tée\n");
+    expect(await storage.size?.(asDocId("a"))).toBe(Buffer.byteLength("# Tée\n"));
+    expect(await storage.size?.(asDocId("nope"))).toBeUndefined();
+  });
+
   it("writes, reads, and lists documents", async () => {
     const storage = createMemStorage();
     await storage.writeAtomic(asDocId("a"), "# A");

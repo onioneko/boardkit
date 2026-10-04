@@ -34,6 +34,34 @@ describe("fs storage", () => {
     });
   });
 
+  it("reports a document's size in bytes without reading it, undefined when missing", async () => {
+    await withTmp(async (dir) => {
+      const storage = createFsStorage({ root: dir });
+      await storage.writeAtomic(asDocId("fin"), "# Tée\n");
+      expect(await storage.size?.(asDocId("fin"))).toBe(Buffer.byteLength("# Tée\n"));
+      expect(await storage.size?.(asDocId("nope"))).toBeUndefined();
+      // A directory named like a document has no size: reading decides.
+      await mkdir(path.join(dir, "dir.md"));
+      expect(await storage.size?.(asDocId("dir"))).toBeUndefined();
+    });
+  });
+
+  it("refuses a size outside the root like a read", async () => {
+    await withTmp(async (dir) => {
+      const outside = await mkdtemp(path.join(tmpdir(), "boardkit-out-"));
+      try {
+        await writeFile(path.join(outside, "x.md"), "secret");
+        await symlink(path.join(outside, "x.md"), path.join(dir, "leak.md"));
+        const storage = createFsStorage({ root: dir });
+        await expect(storage.size?.(asDocId("leak"))).rejects.toMatchObject({
+          code: "E_PATH_OUTSIDE_ROOT",
+        });
+      } finally {
+        await rm(outside, { recursive: true, force: true });
+      }
+    });
+  });
+
   it("returns undefined for missing documents", async () => {
     await withTmp(async (dir) => {
       const storage = createFsStorage({ root: dir });

@@ -17,7 +17,10 @@
 <div class="tsd-signature tsd-anchor-link" id="decidepatch"><span class="tsd-kind-call-signature">decidePatch</span><span class="tsd-signature-symbol">(</span><br/>    <span class="tsd-kind-parameter">currentVersion</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">,</span><br/>    <span class="tsd-kind-parameter">currentAttrs</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">Readonly</span><span class="tsd-signature-symbol">&lt;</span><span class="tsd-signature-type">Record</span><span class="tsd-signature-symbol">&lt;</span><span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">,</span> <span class="tsd-signature-type">unknown</span><span class="tsd-signature-symbol">&gt;</span><span class="tsd-signature-symbol">&gt;</span><span class="tsd-signature-symbol">,</span><br/>    <span class="tsd-kind-parameter">guards</span><span class="tsd-signature-symbol">:</span> <a href="../interfaces/Consumer_API.PatchGuards.html" class="tsd-signature-type tsd-kind-interface">PatchGuards</a><span class="tsd-signature-symbol">,</span><br/><span class="tsd-signature-symbol">)</span><span class="tsd-signature-symbol">:</span> <a href="../types/Internal_API.PatchDecision.html" class="tsd-signature-type tsd-kind-type-alias">PatchDecision</a><a href="#decidepatch" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></div>
 <div class="tsd-description">
 <div class="tsd-comment tsd-typography"><p>Decide whether a patch applies (possibly rebased) or is rejected, from its
-compare-and-set guards against the live version and attrs.</p>
+compare-and-set guards against the live version and attrs. Under strict
+value-CAS (the default, see <a href="../interfaces/Consumer_API.PatchGuards.html#strictexpected" class="tsd-kind-property">PatchGuards.strictExpected</a>) a present
+<code>expected</code> that disagrees with the current attrs rejects first
+(<code>expected-mismatch</code>), even when <code>expectedVersion</code> is absent or current.</p>
 </div>
 <div class="tsd-parameters">
 <h4 class="tsd-parameters-title">Parameters</h4>
@@ -29,12 +32,12 @@ compare-and-set guards against the live version and attrs.</p>
 <div class="tsd-comment tsd-typography"><p>The block's current attrs.</p>
 </div></li>
 <li><span><span class="tsd-kind-parameter">guards</span>: <a href="../interfaces/Consumer_API.PatchGuards.html" class="tsd-signature-type tsd-kind-interface">PatchGuards</a></span>
-<div class="tsd-comment tsd-typography"><p>The patch's <code>expectedVersion</code>/<code>expected</code> guards.</p>
+<div class="tsd-comment tsd-typography"><p>The patch's <code>expectedVersion</code>/<code>expected</code>/<code>strictExpected</code> guards.</p>
 </div></li></ul></div>
 <h4 class="tsd-returns-title">Returns <a href="../types/Internal_API.PatchDecision.html" class="tsd-signature-type tsd-kind-type-alias">PatchDecision</a></h4><p><code>apply</code> (with <code>rebased</code> set when value-CAS matched after a version move) or <code>reject</code>.</p>
 <aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/write/concurrency.ts#L35">packages/core/src/write/concurrency.ts:35</a></li></ul></aside></div></li></ul></section></div>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/write/concurrency.ts#L54">packages/core/src/write/concurrency.ts:54</a></li></ul></aside></div></li></ul></section></div>
 <div class="col-sidebar">
 <div class="page-menu">
 <div class="tsd-navigation settings">

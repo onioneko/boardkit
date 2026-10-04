@@ -164,6 +164,7 @@ export type { WatchEvent, WatchSource } from "./watch/source.js";
 // Value-CAS guards for Engine.patch (host-facing)
 export type { PatchGuards } from "./write/concurrency.js";
 export type {
+  CommitEffect,
   ImportOptions,
   PipelineDeps,
   WriteMode,

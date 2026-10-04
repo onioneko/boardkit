@@ -68,6 +68,18 @@ export interface ExternalWriteDeps {
    * external write a random, unique id.
    */
   readonly commitId?: (docId: DocId, version: string) => string;
+  /**
+   * An existing parse of a source, or `undefined`. The engine passes its parse
+   * cache, so content it has already parsed is not parsed again; a parse it
+   * returns is used without the size and complexity checks.
+   */
+  readonly cachedParse?: (docId: DocId, src: string) => ParsedDoc | undefined;
+  /**
+   * Parses a source that passed the checks; throws when the parser does.
+   * Defaults to `parseDoc` with `parseOptions`. The engine passes its parse
+   * cache, so an external edit's parse serves the next read too.
+   */
+  readonly parse?: (docId: DocId, src: string) => ParsedDoc;
 }
 
 /** The outcome of handling one watch event. */
@@ -98,6 +110,15 @@ export interface ExternalWriteHandler {
    */
   recordCommitted(docId: DocId, src: string): void;
   /**
+   * Forget everything recorded for a document that was deleted, so that the
+   * same bytes reappearing later (a `git checkout`, an editor's undo) are
+   * handled as an external write, not suppressed as a self-echo. The engine
+   * calls this when its own removal lands; `handle` does it itself when it
+   * finds the document gone.
+   * @param docId The document that was deleted.
+   */
+  recordRemoved(docId: DocId): void;
+  /**
    * Handle one watch notification.
    * @param watchPath The filesystem path the watcher reported.
    * @returns The outcome, or `undefined` when the path is outside `rootDir` or not a markdown file.
@@ -112,17 +133,33 @@ export interface ExternalWriteHandler {
  */
 export function createExternalWriteHandler(deps: ExternalWriteDeps): ExternalWriteHandler {
   const lastVersion = new Map<DocId, string>();
+  // The baseline the next external edit is diffed against: the last parsed
+  // tree, or the last committed source, parsed only when an edit needs it.
   const lastTree = new Map<DocId, ParsedDoc>();
+  const lastSrc = new Map<DocId, string>();
   const maxDocumentBytes = deps.maxDocumentBytes ?? DEFAULT_MAX_DOCUMENT_BYTES;
   const complexityLimits = resolveComplexityLimits(deps.complexityLimits);
   /** The size or complexity diagnostic for a source, or `undefined` when it may be parsed. */
   const overLimit = (docId: DocId, src: string): Diagnostic | undefined =>
     documentSizeDiagnostic(docId, src, maxDocumentBytes, "read") ??
     complexityDiagnostic(docId, src, complexityLimits, "read");
-  /** Parse, or `undefined` when the parser throws. */
-  const tryParse = (src: string): ParsedDoc | undefined => {
+  const parse = deps.parse ?? ((_docId: DocId, src: string) => parseDoc(src, deps.parseOptions));
+  /** The baseline tree for `docId`, or `undefined` when there is none or it cannot be parsed. */
+  const baseline = (docId: DocId): ParsedDoc | undefined => {
+    const tree = lastTree.get(docId);
+    if (tree !== undefined) return tree;
+    const src = lastSrc.get(docId);
+    if (src === undefined) return undefined;
+    const cached = deps.cachedParse?.(docId, src);
+    if (cached !== undefined) return cached;
+    if (
+      exceedsDocumentLimit(src, maxDocumentBytes) ||
+      complexityDiagnostic(docId, src, complexityLimits, "read") !== undefined
+    ) {
+      return undefined;
+    }
     try {
-      return parseDoc(src, deps.parseOptions);
+      return parse(docId, src);
     } catch {
       return undefined;
     }
@@ -137,14 +174,17 @@ export function createExternalWriteHandler(deps: ExternalWriteDeps): ExternalWri
 
   return {
     recordCommitted(docId, src) {
+      // Recording is on every commit's path, so it only hashes: the source is
+      // parsed if and when an external edit is diffed against it.
       lastVersion.set(docId, docVersion(src));
-      const parsed =
-        exceedsDocumentLimit(src, maxDocumentBytes) ||
-        complexityDiagnostic(docId, src, complexityLimits, "read") !== undefined
-          ? undefined
-          : tryParse(src);
-      if (parsed === undefined) lastTree.delete(docId);
-      else lastTree.set(docId, parsed);
+      lastTree.delete(docId);
+      lastSrc.set(docId, src);
+    },
+
+    recordRemoved(docId) {
+      lastVersion.delete(docId);
+      lastTree.delete(docId);
+      lastSrc.delete(docId);
     },
 
     async handle(watchPath) {
@@ -161,30 +201,38 @@ export function createExternalWriteHandler(deps: ExternalWriteDeps): ExternalWri
         if (code === "E_PATH_OUTSIDE_ROOT" || code === "E_INVALID_ID") return undefined;
         throw err;
       }
-      if (src === undefined) return undefined; // deleted outside the pipeline; nothing to event
+      if (src === undefined) {
+        // Deleted outside the pipeline: nothing to event, but nothing recorded
+        // for it holds any more.
+        lastVersion.delete(docId);
+        lastTree.delete(docId);
+        lastSrc.delete(docId);
+        return undefined;
+      }
       const version = docVersion(src);
       if (lastVersion.get(docId) === version) {
         return { docId, suppressed: true, external: false, events: [], diagnostics: [] };
       }
 
       // Over the size or a complexity limit: not parsed, so there is nothing
-      // to diff or event. The last parsed tree stays as the baseline for the
-      // next edit that fits. A parse that throws is treated the same way.
-      const tooLarge = overLimit(docId, src);
-      if (tooLarge !== undefined) {
-        lastVersion.set(docId, version);
-        return { docId, suppressed: false, external: true, events: [], diagnostics: [tooLarge] };
+      // to diff or event. The last baseline stays for the next edit that
+      // fits. A parse that throws is treated the same way.
+      let parsed = deps.cachedParse?.(docId, src);
+      if (parsed === undefined) {
+        const tooLarge = overLimit(docId, src);
+        if (tooLarge !== undefined) {
+          lastVersion.set(docId, version);
+          return { docId, suppressed: false, external: true, events: [], diagnostics: [tooLarge] };
+        }
+        try {
+          parsed = parse(docId, src);
+        } catch (err) {
+          lastVersion.set(docId, version);
+          const failed = parseFailedDiagnostic(docId, err);
+          return { docId, suppressed: false, external: true, events: [], diagnostics: [failed] };
+        }
       }
-
-      let parsed: ParsedDoc;
-      try {
-        parsed = parseDoc(src, deps.parseOptions);
-      } catch (err) {
-        lastVersion.set(docId, version);
-        const failed = parseFailedDiagnostic(docId, err);
-        return { docId, suppressed: false, external: true, events: [], diagnostics: [failed] };
-      }
-      const before = lastTree.get(docId) ?? parseDoc("", deps.parseOptions);
+      const before = baseline(docId) ?? parseDoc("", deps.parseOptions);
       const diff = diffDocs(before, parsed);
       const writer = { kind: "human", id: deps.externalWriterId ?? "external" } as const;
       const drafts: EventDraft[] = synthesizeEvents(diff, docId, {
@@ -202,6 +250,7 @@ export function createExternalWriteHandler(deps: ExternalWriteDeps): ExternalWri
 
       lastVersion.set(docId, version);
       lastTree.set(docId, parsed);
+      lastSrc.delete(docId);
       return {
         docId,
         suppressed: false,

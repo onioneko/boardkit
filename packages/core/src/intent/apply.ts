@@ -6,9 +6,9 @@ import { tryBlockId, tryDocId } from "../model/ids.js";
 import {
   type PatchDeltaFn,
   type PipelineDeps,
-  parseLimitRejection,
+  parseStored,
   patchDoc,
-  tryParseDoc,
+  storedSizeRejection,
   type WriteResult,
   type Writer,
 } from "../write/pipeline.js";
@@ -122,15 +122,15 @@ export async function applyIntent(
   const docId = docIdV.id;
   const blockId = blockIdV.id;
 
+  const tooLarge = await storedSizeRejection(deps, docId);
+  if (tooLarge !== undefined) return tooLarge;
   const current = await deps.storage.read(docId);
   if (current === undefined) {
     return reject("missing-doc", [diagnostic("E_DOC_MISSING", `document not found: ${docId}`)]);
   }
-  const overLimit = parseLimitRejection(deps, docId, current, "read");
-  if (overLimit !== undefined) return overLimit;
-  const attempt = tryParseDoc(current, deps.parseOptions, docId);
-  if (!attempt.ok) return reject("validation", [attempt.diagnostic]);
-  const parsed = attempt.parsed;
+  const stored = parseStored(deps, docId, current);
+  if (!stored.ok) return stored.rejection;
+  const parsed = stored.parsed;
   const block = blocksOf(parsed).find((b) => b.blockId === blockId);
   if (block === undefined) {
     return reject("missing-block", [

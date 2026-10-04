@@ -15,6 +15,7 @@ const intent: Intent = {
   params: { to: "approved" },
   expectedVersion: "…", // optional, document version the projection was rendered against
   expected: { value: "pending" }, // optional, attribute values rendered against
+  strictExpected: false, // optional, opt out of strict value-CAS for this intent
 };
 ```
 
@@ -38,6 +39,19 @@ The hook writes only `affordance` and `params`; the projector adds `docId`, `blo
 `expectedVersion` (the version of the document the block came from), and `expected` (the
 current values of the attributes the affordance's patch touches, in the delta's key order).
 Unknown affordances, unparseable payloads, and throwing patches leave the attribute unchanged.
+
+A projector or client that builds intents itself computes the same `expected` with
+`intentExpected`:
+
+```ts
+import { intentExpected } from "@onioneko/boardkit-core";
+
+const block = await engine.getBlock("fin", "dec-macbook");
+if (block !== undefined) {
+  const expected = intentExpected(statusType, "transition", block.attrs, { to: "approved" });
+  // { value: "pending" }, or undefined for an unknown affordance or a patch that throws
+}
+```
 
 ## Applying an intent
 
@@ -78,7 +92,9 @@ See [Middleware](middleware.md).
 
 The intent's `expectedVersion` and `expected` carry through as patch guards:
 
-1. No `expectedVersion` → apply unconditionally.
+0. `expected` is given and disagrees with the block's current values → reject with
+   `expected-mismatch`, whatever `expectedVersion` says (**strict value-CAS**, see below).
+1. No `expectedVersion` → apply.
 2. `expectedVersion` matches the current document version → apply.
 3. The version moved (a concurrent edit), but every `expected` attribute still matches the
    block's current values → **rebased**: apply and mark `result.rebased` as `true`.
@@ -88,13 +104,30 @@ The intent's `expectedVersion` and `expected` carry through as patch guards:
 Rebasing means a button clicked against a slightly-stale projection still succeeds when the
 fields the affordance actually touches are unchanged.
 
-Rule 3 is scoped to the decoded delta, not to the whole block. Because the delta is recomputed
-inside the lock, only the parts it actually rewrites need to match the client's `expected`: an
-array attribute is compared **per element, at the indices the delta changes**, and every other
-attribute is compared as a whole value. Ticking checklist item `c` while someone else ticked
-item `a` rebases and applies; two writers ticking item `c` reject with `expected-mismatch`. An
-`expected` that is missing a key the delta changes counts as a mismatch — the client's view of
-that key cannot be verified.
+The comparison is scoped to the decoded delta, not to the whole block. Because the delta is
+recomputed inside the lock, only the parts it actually rewrites need to match the client's
+`expected`: an array attribute is compared **per element, at the indices the delta changes**,
+and every other attribute is compared as a whole value. Ticking checklist item `c` while someone
+else ticked item `a` rebases and applies; two writers ticking item `c` reject with
+`expected-mismatch`. An `expected` that is missing a key the delta changes counts as a mismatch
+— the client's view of that key cannot be verified.
+
+### Strict value-CAS
+
+Rule 0 is on by default. A client can hold a version and values from different snapshots: a
+view that applies value deltas without a re-render, or a payload a client forged. Without rule
+0, a current `expectedVersion` would apply the write without looking at `expected`, so the
+client would overwrite values it never saw. With it, the engine refuses the write, inside the
+write lock, and returns the current attrs as `rejection.current`.
+
+To get the 0.1 behaviour back, where `expected` is only consulted once the version has moved,
+set `strictExpected: false`:
+
+- on one intent (`Intent.strictExpected`) or one patch (`engine.patch(…, { strictExpected })`);
+- for the whole engine (`createEngine({ strictExpected: false })`); a call's own value wins.
+
+`engine.patch` with a concrete `attrs` delta uses the same rules, comparing every key of
+`expected` whole.
 
 ## Next
 

@@ -11,16 +11,19 @@
 <li><a href="../modules/Consumer_API.html">Consumer API</a></li>
 <li><a href="" aria-current="page">WriteMode</a></li></ul>
 <h1>Type Alias WriteMode</h1></div>
-<div class="tsd-signature"><span class="tsd-kind-type-alias">WriteMode</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">&quot;full&quot;</span> <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;patch&quot;</span> <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;create&quot;</span> <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;remove&quot;</span></div>
+<div class="tsd-signature"><span class="tsd-kind-type-alias">WriteMode</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">&quot;full&quot;</span> <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;patch&quot;</span> <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;create&quot;</span> <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;remove&quot;</span> <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;import&quot;</span></div>
 <div class="tsd-comment tsd-typography"><p>Which write mode a policy decision (and a middleware context) concerns.</p>
 <p>The lifecycle operations <code>createDoc</code>/<code>removeDoc</code> get their own modes (rather
 than reusing <code>&quot;full&quot;</code>/<code>&quot;patch&quot;</code>) so a host policy can distinguish &quot;may this
 writer create documents&quot; and &quot;may this writer delete documents&quot; from &quot;may
 this writer replace/patch content&quot;. A create IS a whole-document write, but a
-policy that grants full-text edits must not implicitly grant creation.</p>
+policy that grants full-text edits must not implicitly grant creation.
+<code>&quot;import&quot;</code> is <a href="../functions/Internal_API.importDoc.html" class="tsd-kind-function">importDoc</a>: a create that stores the bytes verbatim,
+skipping content validation, so a policy can grant it separately (to a
+restore or undo path only, for example).</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/write/pipeline.ts#L69">packages/core/src/write/pipeline.ts:69</a></li></ul></aside></div>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/write/pipeline.ts#L73">packages/core/src/write/pipeline.ts:73</a></li></ul></aside></div>
 <div class="col-sidebar">
 <div class="page-menu">
 <div class="tsd-navigation settings">
