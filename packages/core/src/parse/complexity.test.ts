@@ -15,12 +15,16 @@ function check(src: string, l: Required<ComplexityLimits> = limits) {
   return documentComplexityDiagnostic("d", src, l, "read");
 }
 
+/** Directories that hold no repository markdown of our own. */
+const SKIP_DIRS = new Set(["node_modules", "dist", ".git"]);
+
 function markdownFiles(dir: string): string[] {
   const out: string[] = [];
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) out.push(...markdownFiles(full));
-    else if (entry.name.endsWith(".md")) out.push(full);
+    if (entry.isDirectory()) {
+      if (!SKIP_DIRS.has(entry.name)) out.push(...markdownFiles(full));
+    } else if (entry.name.endsWith(".md")) out.push(full);
   }
   return out;
 }
@@ -204,6 +208,27 @@ describe("documentComplexityDiagnostic", () => {
       expect(check(src)?.message).toContain("maxEmphasisDepth");
     });
 
+    it("refuses the mixed-marker shape that overflowed the parser within the old estimate", () => {
+      // 39 KB: runs next to other markers open in micromark, closers only match
+      // their own marker, and both-flanking runs can open.
+      const src = `${" ~~a*_".repeat(3000)}x${"**(*_~~".repeat(3000)}\n`;
+      expect(src.length).toBeGreaterThan(38_000);
+      expect(check(src)?.message).toContain("maxEmphasisDepth");
+    });
+
+    it("keeps one count per marker: a closer only lowers its own", () => {
+      expect(check(`${"_a ".repeat(40)}${"a** ".repeat(40)}${"_a ".repeat(30)}\n`)?.code).toBe(
+        "E_DOCUMENT_TOO_COMPLEX",
+      );
+    });
+
+    it("counts a run that can both open and close", () => {
+      // Intraword stars can open (and close), so a long enough run of them in
+      // one paragraph is refused: a known false positive.
+      expect(check(`${"2*3 ".repeat(64)}\n`)).toBeUndefined();
+      expect(check(`${"2*3 ".repeat(65)}\n`)?.code).toBe("E_DOCUMENT_TOO_COMPLEX");
+    });
+
     it("lets closers lower the depth", () => {
       expect(check(`${"*a* **b** _c_ ~d~ ".repeat(500)}\n`)).toBeUndefined();
       expect(
@@ -213,9 +238,8 @@ describe("documentComplexityDiagnostic", () => {
       expect(check(`${"a* ".repeat(100)}${"*a ".repeat(64)}\n`)).toBeUndefined();
     });
 
-    it("does not count intraword underscores, both-flanking stars or escapes", () => {
+    it("does not count intraword underscores, unflanked stars or escapes", () => {
       expect(check(`${"snake_case_name ".repeat(200)}\n`)).toBeUndefined();
-      expect(check(`${"2*3*4 ".repeat(200)}\n`)).toBeUndefined();
       expect(check(`${"\\*a ".repeat(200)}\n`)).toBeUndefined();
       expect(check(`${"* a ".repeat(10)}${"a * b ".repeat(200)}\n`)).toBeUndefined();
     });
@@ -243,8 +267,9 @@ describe("documentComplexityDiagnostic", () => {
     });
 
     it("counts runs of one character only", () => {
-      expect(check(`a${"*_".repeat(100)}b\n`)).toBeUndefined();
-      expect(check(`a${"*".repeat(40)}${"_".repeat(40)}b\n`)).toBeUndefined();
+      const runsOnly = { ...limits, maxEmphasisDepth: Infinity };
+      expect(check(`a${"*_".repeat(100)}b\n`, runsOnly)).toBeUndefined();
+      expect(check(`a${"*".repeat(40)}${"_".repeat(40)}b\n`, runsOnly)).toBeUndefined();
     });
 
     it("skips escaped delimiters", () => {
@@ -285,6 +310,18 @@ describe("documentComplexityDiagnostic", () => {
     }
   });
 
+  it("accepts every markdown file in the repository", () => {
+    const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../..");
+    const files = markdownFiles(root);
+    expect(files.some((f) => f.endsWith("CONTRIBUTING.md"))).toBe(true);
+    expect(files.length).toBeGreaterThan(30);
+    const refused = files
+      .map((file) => ({ file: path.relative(root, file), d: check(readFileSync(file, "utf8")) }))
+      .filter((r) => r.d !== undefined)
+      .map((r) => `${r.file}: ${r.d?.message}`);
+    expect(refused).toEqual([]);
+  });
+
   it("scans in linear time", () => {
     // Same byte count, very different shapes: a hostile document must not cost
     // more per byte to scan than plain prose (each is within the limits, so the
@@ -293,10 +330,10 @@ describe("documentComplexityDiagnostic", () => {
     const size = 2 * 1024 * 1024;
     const fill = (unit: string): string => unit.repeat(Math.floor(size / unit.length));
     const prose = fill("lorem ipsum dolor sit amet\n");
-    const nested = fill(`${"> ".repeat(32)}*_~x~_* [a]\n`);
+    const nested = fill(`${"> ".repeat(32)}*a* _b_ ~c~ [a]\n`);
     const indented = fill(`${" ".repeat(150)}x\n`);
     const brackets = fill(`${"[".repeat(30)}${"]".repeat(30)}\n`);
-    const delims = fill(`${"*".repeat(60)}a${"_".repeat(60)}\n`);
+    const delims = fill(`${"*".repeat(30)}a${"*".repeat(30)} ${"_".repeat(60)}\n`);
     const fastest = (src: string): number => {
       let best = Number.POSITIVE_INFINITY;
       for (let k = 0; k < 5; k += 1)

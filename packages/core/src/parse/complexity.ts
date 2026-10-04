@@ -37,9 +37,13 @@ export interface ComplexityLimits {
   readonly maxDelimiterRun?: number;
   /**
    * Deepest emphasis and strikethrough nesting in one paragraph, estimated
-   * from delimiter runs with the CommonMark flanking rules: a run that can
-   * only open adds its length, a run that can only close subtracts it (never
-   * below 0), and paragraphs reset as for `maxBracketDepth`. Defaults to 64.
+   * from delimiter runs with the parser's own open and close rules: a run
+   * that can open (even if it could also close) adds its length to the count
+   * for its marker, a run that can only close cancels up to its length of
+   * openers of the same marker (and, for `~`, the same length) that could not
+   * also close, and the limit applies to the sum of the counts. Paragraphs reset as for `maxBracketDepth`. The estimate is an upper
+   * bound, so some text is over-counted: more than 64 intraword `*` (`2*3`)
+   * in one paragraph is refused. Defaults to 64.
    */
   readonly maxEmphasisDepth?: number;
 }
@@ -93,37 +97,41 @@ function charAtPoint(src: string, i: number): string {
   return String.fromCodePoint(src.codePointAt(i) ?? 0);
 }
 
-/** CommonMark whitespace for flanking: a line edge counts as whitespace. */
-function flankWhitespace(ch: string): boolean {
-  return ch === "" || UNICODE_WHITESPACE.test(ch);
+/** micromark's character classes for attention: 1 whitespace (or a line edge), 2 punctuation, 0 other. */
+function classify(ch: string): 0 | 1 | 2 {
+  if (ch === "" || UNICODE_WHITESPACE.test(ch)) return 1;
+  if (UNICODE_PUNCTUATION.test(ch)) return 2;
+  return 0;
 }
 
-/** CommonMark punctuation for flanking (Unicode `P` and `S`). */
-function flankPunctuation(ch: string): boolean {
-  return ch !== "" && UNICODE_PUNCTUATION.test(ch);
+/** The attention markers micromark knows with GFM: `*`, `_` and `~`. */
+function isAttentionMarker(ch: string): boolean {
+  return ch === "*" || ch === "_" || ch === "~";
 }
 
 /**
- * How a delimiter run changes the emphasis nesting estimate: +1 per character
- * for a run that can only open, -1 per character for one that can only close,
- * 0 for a run that can do both or neither.
+ * Whether a delimiter run can open and whether it can close, mirroring
+ * micromark (`micromark-core-commonmark` attention and
+ * `micromark-extension-gfm-strikethrough`), including the rule that a run
+ * next to another attention marker can open (before it) or close (after it).
+ * A tilde run longer than 2 is not a delimiter at all.
  */
-function emphasisDelta(code: number, length: number, before: string, after: string): number {
-  const left =
-    !flankWhitespace(after) &&
-    (!flankPunctuation(after) || flankWhitespace(before) || flankPunctuation(before));
-  const right =
-    !flankWhitespace(before) &&
-    (!flankPunctuation(before) || flankWhitespace(after) || flankPunctuation(after));
-  let open = left;
-  let close = right;
-  if (code === 0x5f /* _ */) {
-    open = left && (!right || flankPunctuation(before));
-    close = right && (!left || flankPunctuation(after));
+function runCan(
+  code: number,
+  length: number,
+  before: string,
+  after: string,
+): { readonly open: boolean; readonly close: boolean } {
+  const b = classify(before);
+  const a = classify(after);
+  if (code === 0x7e /* ~ */) {
+    if (length > 2) return { open: false, close: false };
+    return { open: a === 0 || (a === 2 && b !== 0), close: b === 0 || (b === 2 && a !== 0) };
   }
-  if (open && !close) return length;
-  if (close && !open) return -length;
-  return 0;
+  const open = a === 0 || (a === 2 && b !== 0) || isAttentionMarker(after);
+  const close = b === 0 || (b === 2 && a !== 0) || isAttentionMarker(before);
+  if (code === 0x2a /* * */) return { open, close };
+  return { open: open && (b !== 0 || !close), close: close && (a !== 0 || !open) };
 }
 
 /**
@@ -225,7 +233,14 @@ export function documentComplexityDiagnostic(
   let line = 1;
   let i = 0;
   let bracketDepth = 0;
-  let emphasisDepth = 0;
+  // Emphasis nesting estimate. A closer only matches openers of its own marker
+  // (and, for `~`, of its own length), and it is only sure to match an opener
+  // that cannot also close (the rule of 3 can stop the others). So each
+  // marker keeps open-only openers, which a close-only run may cancel, apart
+  // from openers that could also close, which only a paragraph end resets.
+  // Slots: `*` open-only, `*` both, `_` open-only, `_` both, `~` open-only,
+  // `~~` open-only, `~` or `~~` both.
+  const emphasis = [0, 0, 0, 0, 0, 0, 0];
   while (i < n) {
     const lineStart = i;
     // Prefix: whitespace and container markers, up to the line's content.
@@ -277,7 +292,7 @@ export function documentComplexityDiagnostic(
     }
     if (blank && quotesOnly) {
       bracketDepth = 0;
-      emphasisDepth = 0;
+      emphasis.fill(0);
     }
 
     // Content: bracket nesting and delimiter runs, escapes skipped. A rule or
@@ -306,13 +321,18 @@ export function documentComplexityDiagnostic(
           }
           i += 1;
         }
-        const delta = emphasisDelta(
-          c,
-          i - runStart,
-          charBefore(src, runStart, contentStart),
-          charAtPoint(src, i),
-        );
-        emphasisDepth = Math.max(0, emphasisDepth + delta);
+        // Any run that can open adds its length (it may nest, even when it
+        // could also close); a run that can only close cancels open-only
+        // openers of its own marker (and length, for `~`).
+        const length = i - runStart;
+        const can = runCan(c, length, charBefore(src, runStart, contentStart), charAtPoint(src, i));
+        const openOnly = c === 0x2a ? 0 : c === 0x5f ? 2 : length === 1 ? 4 : 5;
+        const both = c === 0x2a ? 1 : c === 0x5f ? 3 : 6;
+        if (can.open && can.close) emphasis[both] = (emphasis[both] ?? 0) + length;
+        else if (can.open) emphasis[openOnly] = (emphasis[openOnly] ?? 0) + length;
+        else if (can.close) emphasis[openOnly] = Math.max(0, (emphasis[openOnly] ?? 0) - length);
+        let emphasisDepth = 0;
+        for (const count of emphasis) emphasisDepth += count;
         if (emphasisDepth > limits.maxEmphasisDepth) {
           return fail(
             line,
