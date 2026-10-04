@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import equal from "fast-deep-equal";
 import type { AnyBlockType } from "../blocks/types.js";
 import { diffDocs } from "../diff/diff.js";
@@ -21,7 +22,7 @@ import {
   documentSizeDiagnostic,
   exceedsDocumentLimit,
 } from "../parse/size.js";
-import type { Clock, EventDraft, EventRecord, Storage } from "../ports/ports.js";
+import type { Clock, CommitInfo, EventDraft, EventRecord, Storage } from "../ports/ports.js";
 import { enforceHistory } from "../validate/history.js";
 import { validateBlock, validateParams } from "../validate/schema.js";
 import {
@@ -65,8 +66,11 @@ export interface Writer {
  * writer create documents" and "may this writer delete documents" from "may
  * this writer replace/patch content". A create IS a whole-document write, but a
  * policy that grants full-text edits must not implicitly grant creation.
+ * `"import"` is {@link importDoc}: a create that stores the bytes verbatim,
+ * skipping content validation, so a policy can grant it separately (to a
+ * restore or undo path only, for example).
  */
-export type WriteMode = "full" | "patch" | "create" | "remove";
+export type WriteMode = "full" | "patch" | "create" | "remove" | "import";
 
 /**
  * A patch delta computed inside the write lock against the freshly-read current
@@ -90,7 +94,8 @@ export interface WritePolicy {
    * @param writer The proposed write's author.
    * @param docId The target document.
    * @param mode The write mode: `full` (replace), `patch` (attrs delta),
-   * `create` (new document), or `remove` (delete document).
+   * `create` (new document), `remove` (delete document), or `import` (new
+   * document stored verbatim, see {@link importDoc}).
    * @returns `true` to allow; `false` rejects the write with a write-domain diagnostic.
    */
   canWrite?(writer: Writer, docId: DocId, mode: WriteMode): boolean;
@@ -119,7 +124,7 @@ export type WriteResult =
       readonly ok: false;
       /** Why the write was rejected. */
       readonly rejection: {
-        /** Machine-readable rejection reason: `write-domain`, `missing-doc`, `validation`, `stale-version`, `expected-mismatch`, `missing-block`, `unknown-type`, `unknown-affordance`, `patch`, `unsupported`, `exists`, `invalid-id`, `too-large`, `too-complex`, … */
+        /** Machine-readable rejection reason: `write-domain`, `missing-doc`, `validation`, `stale-version`, `expected-mismatch`, `missing-block`, `unknown-type`, `unknown-affordance`, `patch`, `unsupported`, `exists`, `invalid-id`, `too-large`, `too-complex`, `import-amended`, … */
         readonly reason: string;
         /** The live value(s) the write conflicted with (e.g. the current version or attrs), when relevant. */
         readonly current?: unknown;
@@ -158,6 +163,41 @@ export interface PipelineDeps {
    * write rejects with a `TypeError`, as `createEngine` throws for it.
    */
   readonly complexityLimits?: ComplexityLimits | false;
+  /**
+   * Mints the {@link CommitInfo.id} stamped on every event of one commit,
+   * called once per commit. The engine passes its own minter
+   * (`<docId>@<version>#<prefix>.<n>`, see `EngineOptions.commitIdPrefix`).
+   * Absent, {@link defaultCommitId} gives each commit a random id, unique but
+   * not reproducible; pass a minter for deterministic ids.
+   */
+  readonly commitId?: (docId: DocId, version: string) => string;
+}
+
+/**
+ * The commit id used when no `commitId` minter is configured:
+ * `<docId>@<version>#<uuid>`. `docId@version` alone does not identify a
+ * commit (a create and the remove of the same bytes share it, and so do
+ * A→B→A edits), so a random suffix makes every id unique.
+ * @param docId The committed document.
+ * @param version The committed (or, for a removal, removed) content's hash.
+ * @returns A fresh, unique commit id.
+ */
+export function defaultCommitId(docId: DocId, version: string): string {
+  return `${docId}@${version}#${randomUUID()}`;
+}
+
+/**
+ * Stamp each draft of one commit with its {@link CommitInfo}: a shared `id`,
+ * its `index` and the commit's `size`.
+ * @param drafts The commit's event drafts, in append order.
+ * @param id The commit id.
+ * @returns New drafts carrying `commit`.
+ */
+export function stampCommit(drafts: readonly EventDraft[], id: string): EventDraft[] {
+  return drafts.map((draft, index) => {
+    const commit: CommitInfo = { id, index, size: drafts.length };
+    return { ...draft, commit };
+  });
 }
 
 /**
@@ -242,14 +282,19 @@ function blocksOf(parsed: ParsedDoc): Block[] {
   return parsed.nodes.filter((n): n is Block => "blockId" in n);
 }
 
+/** EMIT: append one commit's drafts, stamped with their shared commit info. */
 async function emit(
   deps: PipelineDeps,
+  docId: DocId,
+  version: string,
   drafts: readonly EventDraft[],
 ): Promise<{ records: EventRecord[]; appended: boolean }> {
   const sink = deps.storage.defaultEventSink?.();
   if (sink === undefined) return { records: [], appended: false };
+  if (drafts.length === 0) return { records: [], appended: true };
+  const id = (deps.commitId ?? defaultCommitId)(docId, version);
   const records: EventRecord[] = [];
-  for (const draft of drafts) records.push(await sink.append(draft));
+  for (const draft of stampCommit(drafts, id)) records.push(await sink.append(draft));
   return { records, appended: true };
 }
 
@@ -413,10 +458,11 @@ export async function writeDoc(
       if (grown !== undefined) return grown;
       await deps.storage.writeAtomic(docId, validated.src);
       const drafts = diffAndEmitDrafts(deps, docId, current, validated.src, writer);
-      const { records, appended } = await emit(deps, drafts);
+      const version = docVersion(validated.src);
+      const { records, appended } = await emit(deps, docId, version, drafts);
       return {
         ok: true,
-        version: docVersion(validated.src),
+        version,
         events: records,
         eventsAppended: appended,
       };
@@ -581,10 +627,11 @@ export async function patchDoc(
 
       await deps.storage.writeAtomic(docId, src);
       const drafts = diffAndEmitDrafts(deps, docId, current, src, writer);
-      const { records, appended } = await emit(deps, drafts);
+      const version = docVersion(src);
+      const { records, appended } = await emit(deps, docId, version, drafts);
       return {
         ok: true,
-        version: docVersion(src),
+        version,
         ...(decision.kind === "apply" && decision.rebased ? { rebased: true } : {}),
         events: records,
         eventsAppended: appended,
@@ -632,15 +679,92 @@ export async function createDoc(
       const grown = parseLimitRejection(deps, docId, validated.src, "write");
       if (grown !== undefined) return grown;
       await deps.storage.writeAtomic(docId, validated.src);
-      const { records, appended } = await emit(deps, [
+      const version = docVersion(validated.src);
+      const { records, appended } = await emit(deps, docId, version, [
         { t: deps.clock(), type: "doc.created", docId, by: writer },
       ]);
       return {
         ok: true,
-        version: docVersion(validated.src),
+        version,
         events: records,
         eventsAppended: appended,
       };
+    }),
+  );
+}
+
+/** Options for {@link importDoc}. */
+export interface ImportOptions {
+  /**
+   * Store content over `maxDocumentBytes` too. The document is then stored but
+   * never parsed: its projection is `ok: false` with `E_DOCUMENT_TOO_LARGE`,
+   * as for one written outside the engine. Default `false`.
+   */
+  readonly ignoreSizeLimit?: boolean;
+}
+
+/**
+ * Import a document: store `content` byte for byte under a new id and emit
+ * `doc.created` with `imported: true`. This is the restore path for a trash
+ * or an undo, which must put back exactly what was there, including content
+ * `createDoc` would reject (attrs that fail their schema, a document over a
+ * complexity limit) or rewrite (bounded-history truncation).
+ *
+ * It skips content validation, history truncation and the complexity limits.
+ * Everything else a commit does still runs: the write policy (mode
+ * `"import"`), the document lock, the write middleware (mode `"import"`,
+ * proposal `{ content }`), the self-echo record and the event. Middleware may
+ * observe or reject an import but not change its bytes: an amended proposal
+ * rejects the import with `import-amended`. Content over `maxDocumentBytes` is
+ * rejected with `too-large` unless `opts.ignoreSizeLimit` is set. An existing
+ * id is rejected with `exists`.
+ * @param deps The injected pipeline dependencies.
+ * @param docId The id of the document to import.
+ * @param writer The write's author (audit provenance).
+ * @param content The exact bytes to store.
+ * @param opts `ignoreSizeLimit` to store content over the size limit.
+ * @returns The write result, including the `doc.created` event on success.
+ */
+export async function importDoc(
+  deps: PipelineDeps,
+  docId: DocId,
+  writer: Writer,
+  content: string,
+  opts: ImportOptions = {},
+): Promise<WriteResult> {
+  if (deps.policy?.canWrite && !deps.policy.canWrite(writer, docId, "import")) {
+    return rejection("write-domain", [
+      diagnostic("E_WRITE_DOMAIN", `writer not allowed: ${docId}`),
+    ]);
+  }
+  const ctx: WriteCtx = { docId, writer, mode: "import", proposed: { content } };
+  return withLock(deps, docId, () =>
+    withWriteMiddleware(deps, ctx, async () => {
+      const proposed = ctx.proposed as { content?: unknown };
+      if (proposed.content !== content || Object.keys(proposed).length !== 1) {
+        return rejection("import-amended", [
+          diagnostic(
+            "E_IMPORT_AMENDED",
+            `write middleware amended an import of ${docId}; an import stores its bytes as given`,
+          ),
+        ]);
+      }
+      const existing = await deps.storage.read(docId);
+      if (existing !== undefined) {
+        return rejection("exists", [
+          diagnostic("E_DOC_EXISTS", `document already exists: ${docId}`),
+        ]);
+      }
+      if (opts.ignoreSizeLimit !== true) {
+        const tooLarge = sizeRejection(deps, docId, content, "write");
+        if (tooLarge !== undefined) return tooLarge;
+      }
+      await deps.storage.writeAtomic(docId, content);
+      const version = docVersion(content);
+      const { records, appended } = await emit(deps, docId, version, [
+        { t: deps.clock(), type: "doc.created", docId, by: writer, imported: true },
+      ]);
+      return { ok: true, version, events: records, eventsAppended: appended };
     }),
   );
 }
@@ -681,11 +805,12 @@ export async function removeDoc(
         ]);
       }
       await deps.storage.delete(docId);
-      const { records, appended } = await emit(deps, [
+      // `version` is the removed content's hash: the last committed state.
+      const version = docVersion(existing);
+      const { records, appended } = await emit(deps, docId, version, [
         { t: deps.clock(), type: "doc.removed", docId, by: writer },
       ]);
-      // `version` is the removed content's hash: the last committed state.
-      return { ok: true, version: docVersion(existing), events: records, eventsAppended: appended };
+      return { ok: true, version, events: records, eventsAppended: appended };
     }),
   );
 }

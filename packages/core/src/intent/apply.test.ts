@@ -8,7 +8,7 @@ import { parseDoc } from "../parse/pipeline.js";
 import { createMemStorage } from "../ports/mem.js";
 import type { Storage } from "../ports/ports.js";
 import { createDoc, type PipelineDeps, type WriteResult } from "../write/pipeline.js";
-import { applyIntent } from "./apply.js";
+import { applyIntent, intentExpected } from "./apply.js";
 
 /** Narrow a WriteResult to its rejection (throws when it unexpectedly succeeded). */
 function rejectionOf(r: WriteResult): {
@@ -558,5 +558,70 @@ describe("applyIntent against an over-complex or unparseable stored document", (
     const r = rejectionOf(await applyIntent(d, intent, writer));
     expect(r.reason).toBe("validation");
     expect(r.diagnostics.map((x) => x.code)).toEqual(["E_PARSE_FAILED"]);
+  });
+});
+
+describe("intentExpected (the value-CAS payload for an intent)", () => {
+  const pairType: BlockType = {
+    type: "pair",
+    schema: { type: "object" },
+    affordances: [
+      { name: "swap", patch: (a) => ({ right: a.left, left: a.right }) },
+      { name: "add", patch: () => ({ extra: 1 }) },
+      {
+        name: "boom",
+        patch: () => {
+          throw new Error("boom");
+        },
+      },
+    ],
+  };
+  const attrs = { id: "p", left: "L", right: "R", other: "O" };
+
+  it("picks the current values of the keys the patch changes, in the delta's key order", () => {
+    const expected = intentExpected(pairType, "swap", attrs, undefined);
+    expect(expected).toEqual({ right: "R", left: "L" });
+    expect(Object.keys(expected ?? {})).toEqual(["right", "left"]);
+  });
+
+  it("leaves out a key the patch adds that the attrs do not have yet", () => {
+    expect(intentExpected(pairType, "add", attrs, undefined)).toEqual({});
+  });
+
+  it("passes the params to the patch", () => {
+    expect(intentExpected(statusType, "transition", { id: "s", value: "a" }, { to: "b" })).toEqual({
+      value: "a",
+    });
+  });
+
+  it("is undefined for an unknown affordance or a patch that throws", () => {
+    expect(intentExpected(pairType, "nope", attrs, undefined)).toBeUndefined();
+    expect(intentExpected(pairType, "boom", attrs, undefined)).toBeUndefined();
+  });
+
+  it("produces a payload strict value-CAS accepts for the same snapshot", async () => {
+    const storage = createMemStorage();
+    const d: PipelineDeps = {
+      storage,
+      clock: () => "2026-10-04T00:00:00Z",
+      blockTypes: new Map([["status", statusType]]),
+      parseOptions: { blockTypes: new Set(["status"]) },
+    };
+    const src = "```status\nid: s\nstates: [a, b]\nvalue: a\n```\n";
+    await createDoc(d, asDocId("d"), { kind: "human", id: "u" }, src);
+    const expected = intentExpected(statusType, "transition", { id: "s", value: "a" }, { to: "b" });
+    const r = await applyIntent(
+      d,
+      {
+        docId: "d",
+        blockId: "s",
+        affordance: "transition",
+        params: { to: "b" },
+        expectedVersion: docVersion(src),
+        ...(expected !== undefined ? { expected } : {}),
+      },
+      { kind: "human", id: "u" },
+    );
+    expect(r.ok).toBe(true);
   });
 });

@@ -49,7 +49,7 @@ export type { Intent } from "./intent/apply.js";
 // ---------------------------------------------------------------------------
 // Intent
 // ---------------------------------------------------------------------------
-export { applyIntent } from "./intent/apply.js";
+export { applyIntent, intentExpected } from "./intent/apply.js";
 // ---------------------------------------------------------------------------
 // Merge data (custom projectors receive the merged tree)
 // ---------------------------------------------------------------------------
@@ -110,6 +110,7 @@ export { createMemStorage } from "./ports/mem.js";
 // ---------------------------------------------------------------------------
 export type {
   Clock,
+  CommitInfo,
   EventDraft,
   EventRecord,
   EventSink,
@@ -163,6 +164,7 @@ export type { WatchEvent, WatchSource } from "./watch/source.js";
 // Value-CAS guards for Engine.patch (host-facing)
 export type { PatchGuards } from "./write/concurrency.js";
 export type {
+  ImportOptions,
   PipelineDeps,
   WriteMode,
   WritePolicy,
