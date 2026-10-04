@@ -21,7 +21,7 @@ the pipeline treats identically; middleware and host policy may branch on them.
 
 | Event | Emitted when |
 |---|---|
-| `doc.created` | a document is created |
+| `doc.created` | a document is created, or imported (`imported: true`, see [Importing a document](#importing-a-document)) |
 | `doc.updated` | a document's content changes through the pipeline |
 | `doc.removed` | a document is removed (also emitted, followed by `doc.created`, when a write replaces a stored document too large to parse; see [Document size limit](projections.md#document-size-limit)) |
 | `section.added` / `section.removed` | a section appears or disappears |
@@ -41,6 +41,59 @@ became without re-reading the document:
 A single write can emit several events: a full-text edit that rewords a section and bumps a
 block value emits `doc.updated`, `section.changed`, `block.updated`, and any matched transition
 events.
+
+## Commit boundaries
+
+Every event carries `commit`, which says which commit appended it and where in that commit it
+sits:
+
+```ts
+{ seq: 8, t: "…", type: "section.added", docId: "fin", commit: { id: "fin@sha256-…#12", index: 1, size: 3 }, by: { … } }
+```
+
+- `id` is shared by every event of one commit: a write, a patch, an intent, a create, an
+  import, a remove, or one handled external write. It is `<docId>@<version>#<n>`, where
+  `version` is the committed content's hash (the removed content's, for `doc.removed`) and `n`
+  counts the engine's commits from 1. There is no clock or randomness in it, so the same writes
+  give the same ids.
+- `index` is the event's position in the commit, from 0, and `size` is the commit's event count.
+  The event with `index === size - 1` closes the commit.
+
+A subscriber that re-renders on change can wait for the closing event instead of debouncing:
+
+```ts
+engine.subscribe("fin", (evt) => {
+  if (evt.commit === undefined || evt.commit.index === evt.commit.size - 1) rerender();
+});
+```
+
+The fs event log stores the field, so a replay groups the same way. Two limits apply. `n`
+restarts with each engine, so across restarts group by consecutive records rather than by `id`
+alone. A record from an older log, or one a host appended by hand, has no `commit`.
+
+## Importing a document
+
+`engine.importDoc(docId, { writer, content })` puts a document back exactly as it was: the
+restore path for a trash or an undo. It stores `content` byte for byte, including content
+`createDoc` would reject (attrs that fail their schema, a document over a complexity limit) or
+rewrite (bounded-history truncation), and emits one `doc.created` with `imported: true`:
+
+```ts
+const result = await engine.importDoc("notes/q3", { writer, content: trashed.src });
+// events: [{ type: "doc.created", docId: "notes/q3", imported: true, by: writer, commit: { … } }]
+```
+
+It is a commit like any other: the write policy and write middleware see mode `"import"` (and
+may veto it), it takes the document lock, the watcher does not event it a second time, and
+scoped subscribers and caches see the new document. Middleware may not amend an import's bytes:
+an amended proposal is rejected with `import-amended`. An existing id is rejected with `exists`.
+
+Content over `maxDocumentBytes` is rejected with `too-large`. Pass `ignoreSizeLimit: true` to
+store it anyway; it is then never parsed, and its projection is `ok: false` with
+`E_DOCUMENT_TOO_LARGE`, like a document written outside the engine.
+
+A consumer that switches on the event type sees an ordinary `doc.created`. Check `imported` to
+tell a restore from a create.
 
 ## Transition events
 
