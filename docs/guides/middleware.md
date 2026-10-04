@@ -99,9 +99,11 @@ const addStamp: ProjectionMiddleware = async (ctx, next) => {
 };
 ```
 
-A projection middleware that throws `WriteRejection` before `next()` rejects the projection:
-the output degrades to the projector's `degrade` output (the raw source for a projector that
-declares none; the escaped source for `html`) with the rejection's diagnostics attached.
+A projection middleware that throws rejects the projection: the output degrades to the
+projector's `degrade` output (the raw source for a projector that declares none; the escaped
+source for `html`). A `WriteRejection` attaches its own diagnostics; any other error, thrown
+before or after `next()`, attaches an `E_MIDDLEWARE_ERROR` diagnostic carrying its message, so
+one broken plugin never takes a whole view down. `projection()` does not reject either way.
 
 Output a middleware writes after `next()` is not checked by anything: for the `html`
 projector it replaces sanitized HTML, and the host code that writes it is responsible for its

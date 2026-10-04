@@ -14,20 +14,30 @@ export const PARSE_CACHE_MAX_ENTRIES = 256;
  */
 export const PARSE_CACHE_MAX_SOURCE_BYTES = 16 * 1024 * 1024;
 
+/**
+ * Most failed parses the engine remembers at once. A parse that throws (deep
+ * nesting that overflows the stack) can take seconds before it does, so the
+ * failure is remembered by content hash like a parse, and the same content is
+ * not parsed again until it changes or is evicted.
+ */
+export const PARSE_CACHE_MAX_FAILURES = 256;
+
 /** A bounded, content-keyed cache of parses. */
 export interface ParseCache {
   /**
    * Parse `src`, or return the cached parse of identical content.
    * @param src The document source.
    * @returns The parse and the content hash it is cached under.
+   * @throws Whatever the parse threw, for this content now or on an earlier
+   *   call: a failed parse is remembered and rethrown without parsing again.
    */
   parse(src: string): { readonly doc: ParsedDoc; readonly hash: string };
   /**
-   * Drop the parse cached under a content hash.
+   * Drop the parse (or remembered failure) cached under a content hash.
    * @param hash The content hash.
    */
   delete(hash: string): void;
-  /** Drop every cached parse. */
+  /** Drop every cached parse and remembered failure. */
   clear(): void;
   /** Number of cached parses. */
   readonly size: number;
@@ -62,12 +72,23 @@ export function createParseCache(
     max: opts.maxEntries ?? PARSE_CACHE_MAX_ENTRIES,
     maxSize: opts.maxSourceBytes ?? PARSE_CACHE_MAX_SOURCE_BYTES,
   });
+  // The thrown value, boxed so that any value (even `undefined`) can be stored.
+  const failures = new LRUCache<string, { readonly thrown: unknown }>({
+    max: PARSE_CACHE_MAX_FAILURES,
+  });
   return {
     parse(src) {
       const hash = docVersion(src);
       let doc = cache.get(hash);
       if (doc === undefined) {
-        doc = parse(src);
+        const failed = failures.get(hash);
+        if (failed !== undefined) throw failed.thrown;
+        try {
+          doc = parse(src);
+        } catch (thrown) {
+          failures.set(hash, { thrown });
+          throw thrown;
+        }
         for (const node of doc.nodes) if ("blockId" in node) deepFreeze(node.attrs);
         cache.set(hash, doc, { size: Math.max(1, src.length) });
       }
@@ -75,9 +96,11 @@ export function createParseCache(
     },
     delete(hash) {
       cache.delete(hash);
+      failures.delete(hash);
     },
     clear() {
       cache.clear();
+      failures.clear();
     },
     get size() {
       return cache.size;

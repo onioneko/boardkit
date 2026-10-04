@@ -35,10 +35,11 @@ export type { BuildMergedTreeOptions } from "../link/merge.js";
 export { buildMergedTree, resolveMergedValues } from "../link/merge.js";
 export { validateFrontmatter } from "../model/frontmatter.js";
 export { extractBlocks } from "../parse/blocks.js";
+export { documentComplexityDiagnostic, fencedCodeLines } from "../parse/complexity.js";
 // ---------------------------------------------------------------------------
 // Parse machinery
 // ---------------------------------------------------------------------------
-export { parseDoc } from "../parse/pipeline.js";
+export { parseDoc, parseFailedDiagnostic } from "../parse/pipeline.js";
 export type { RefHit } from "../parse/refs.js";
 export { extractRefs } from "../parse/refs.js";
 export type { SectionSpan } from "../parse/sections.js";

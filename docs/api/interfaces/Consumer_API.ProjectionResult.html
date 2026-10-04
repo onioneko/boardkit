@@ -20,7 +20,7 @@
 <ul class="tsd-type-parameter-list">
 <li><span id="t"><span class="tsd-kind-type-parameter">T</span> = <span class="tsd-signature-type">unknown</span></span></li></ul></section><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/f5572653a3364d62cc831110c6740fcb46e67d39/packages/core/src/engine/engine.ts#L260">packages/core/src/engine/engine.ts:260</a></li></ul></aside>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/engine/engine.ts#L304">packages/core/src/engine/engine.ts:304</a></li></ul></aside>
 <section class="tsd-panel-group tsd-index-group">
 <section class="tsd-panel tsd-index-panel">
 <details class="tsd-index-content tsd-accordion" open><summary class="tsd-accordion-summary tsd-index-summary"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><use href="../assets/icons.svg#icon-chevronDown"></use></svg>
@@ -42,17 +42,19 @@
 <div class="tsd-comment tsd-typography"><p>Parse/link/projection diagnostics (empty on a clean projection).</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/f5572653a3364d62cc831110c6740fcb46e67d39/packages/core/src/engine/engine.ts#L280">packages/core/src/engine/engine.ts:280</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/engine/engine.ts#L326">packages/core/src/engine/engine.ts:326</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="ok"><code class="tsd-tag">Readonly</code><span>ok</span><a href="#ok" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">ok</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">boolean</span></div>
 <div class="tsd-comment tsd-typography"><p>True when the projection produced output; false when it could not run at
 all (a missing/invalid document, one over
-<a href="Consumer_API.EngineOptions.html#maxdocumentbytes" class="tsd-kind-property">EngineOptions.maxDocumentBytes</a>, or an unknown projector) and
+<a href="Consumer_API.EngineOptions.html#maxdocumentbytes" class="tsd-kind-property">EngineOptions.maxDocumentBytes</a> or a
+<a href="Consumer_API.EngineOptions.html#complexitylimits" class="tsd-kind-property">EngineOptions.complexityLimits</a> limit, one whose parse threw, or an
+unknown projector) and
 <code>output</code> is the empty string with the reason carried in <code>diagnostics</code>.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/f5572653a3364d62cc831110c6740fcb46e67d39/packages/core/src/engine/engine.ts#L267">packages/core/src/engine/engine.ts:267</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/engine/engine.ts#L313">packages/core/src/engine/engine.ts:313</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="output"><code class="tsd-tag">Readonly</code><span>output</span><a href="#output" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">output</span><span class="tsd-signature-symbol">:</span> <a class="tsd-signature-type tsd-kind-type-parameter" href="#t">T</a></div>
@@ -60,13 +62,13 @@ all (a missing/invalid document, one over
 untouched (a string for the built-in <code>text</code> projector, but arbitrary — a
 react component tree, an email body, terminal output, a pdf, …). The empty
 string when <code>ok</code> is false. When the projection degrades (the projector
-threw, or a projection middleware rejected it), <code>ok</code> stays true and
+threw, or a projection middleware threw), <code>ok</code> stays true and
 <code>output</code> is the projector's <a href="Consumer_API.Projector.html#degrade" class="tsd-kind-method">Projector.degrade</a> result, or the raw
 source text when the projector declares none; if <code>degrade</code> itself throws,
 it is the empty string. The cause is carried in <code>diagnostics</code>.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/f5572653a3364d62cc831110c6740fcb46e67d39/packages/core/src/engine/engine.ts#L278">packages/core/src/engine/engine.ts:278</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/engine/engine.ts#L324">packages/core/src/engine/engine.ts:324</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="versions"><code class="tsd-tag">Readonly</code><span>versions</span><a href="#versions" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">versions</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">Readonly</span><span class="tsd-signature-symbol">&lt;</span><span class="tsd-signature-type">Record</span><span class="tsd-signature-symbol">&lt;</span><span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">,</span> <span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">&gt;</span><span class="tsd-signature-symbol">&gt;</span></div>
@@ -75,7 +77,7 @@ projection through includes (one cut off by <code>includeLimits</code>, or over
 <a href="Consumer_API.EngineOptions.html#maxdocumentbytes" class="tsd-kind-property">EngineOptions.maxDocumentBytes</a>, is not).</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/f5572653a3364d62cc831110c6740fcb46e67d39/packages/core/src/engine/engine.ts#L286">packages/core/src/engine/engine.ts:286</a></li></ul></aside></section></section></details></div>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/engine/engine.ts#L332">packages/core/src/engine/engine.ts:332</a></li></ul></aside></section></section></details></div>
 <div class="col-sidebar">
 <div class="page-menu">
 <div class="tsd-navigation settings">

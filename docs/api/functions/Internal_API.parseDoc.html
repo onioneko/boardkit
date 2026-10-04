@@ -17,7 +17,12 @@
 <div class="tsd-signature tsd-anchor-link" id="parsedoc"><span class="tsd-kind-call-signature">parseDoc</span><span class="tsd-signature-symbol">(</span><span class="tsd-kind-parameter">src</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">,</span> <span class="tsd-kind-parameter">options</span><span class="tsd-signature-symbol">?:</span> <a href="../interfaces/Consumer_API.ParseOptions.html" class="tsd-signature-type tsd-kind-interface">ParseOptions</a><span class="tsd-signature-symbol">)</span><span class="tsd-signature-symbol">:</span> <a href="../interfaces/Consumer_API.ParsedDoc.html" class="tsd-signature-type tsd-kind-interface">ParsedDoc</a><a href="#parsedoc" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></div>
 <div class="tsd-description">
 <div class="tsd-comment tsd-typography"><p>Parse one document into a ParsedDoc. Content errors are reported as
-diagnostics and never thrown (fail-soft); only programming errors throw.</p>
+diagnostics and never thrown (fail-soft); only programming errors throw.
+The one exception is input deep enough to exhaust the call stack (thousands
+of nested containers): the markdown parser then throws a <code>RangeError</code>. The
+engine screens such input out first (<code>EngineOptions.complexityLimits</code>) and
+turns a throw that still happens into an <code>E_PARSE_FAILED</code> diagnostic
+(<a href="Internal_API.parseFailedDiagnostic.html" class="tsd-kind-function">parseFailedDiagnostic</a>).</p>
 </div>
 <div class="tsd-parameters">
 <h4 class="tsd-parameters-title">Parameters</h4>
@@ -31,7 +36,7 @@ diagnostics and never thrown (fail-soft); only programming errors throw.</p>
 <h4 class="tsd-returns-title">Returns <a href="../interfaces/Consumer_API.ParsedDoc.html" class="tsd-signature-type tsd-kind-interface">ParsedDoc</a></h4><p>The parsed document: frontmatter, sections/blocks, refs, spans, and diagnostics.</p>
 <aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/f5572653a3364d62cc831110c6740fcb46e67d39/packages/core/src/parse/pipeline.ts#L39">packages/core/src/parse/pipeline.ts:39</a></li></ul></aside></div></li></ul></section></div>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/parse/pipeline.ts#L60">packages/core/src/parse/pipeline.ts:60</a></li></ul></aside></div></li></ul></section></div>
 <div class="col-sidebar">
 <div class="page-menu">
 <div class="tsd-navigation settings">

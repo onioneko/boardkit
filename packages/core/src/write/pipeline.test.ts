@@ -5,6 +5,7 @@ import { type WriteMiddleware, WriteRejection } from "../middleware/compose.js";
 import type { Diagnostic } from "../model/diagnostic.js";
 import type { Block } from "../model/doc.js";
 import { asBlockId, asDocId } from "../model/ids.js";
+import type { ComplexityLimits } from "../parse/complexity.js";
 import { parseDoc } from "../parse/pipeline.js";
 import { createMemStorage } from "../ports/mem.js";
 import type { Storage } from "../ports/ports.js";
@@ -716,5 +717,89 @@ describe("patch proposal origin (intent-originated patches)", () => {
     expect(rejectionOf(r).reason).toBe("validation");
     expect(rejectionOf(r).diagnostics.map((diag) => diag.code)).toEqual(["E_PARAM_SCHEMA"]);
     expect(await d.storage.read(asDocId("fin"))).toBe(src);
+  });
+});
+
+describe("complexity limits and parse failures (fail-soft)", () => {
+  /** The issue repro: about 8 KB, far below the size limit, but 8,000 containers deep. */
+  const deep = `# t\n\n${">".repeat(8000)} x\n`;
+  const statusSrc = "```status\nid: s\nstates: [a, b]\nvalue: a\n```\n";
+
+  it("rejects a create, write and patch of over-complex content with too-complex, never throwing", async () => {
+    const d = deps();
+    const created = createDoc(d, asDocId("deep"), writer, deep);
+    await expect(created).resolves.toBeDefined();
+    const c = rejectionOf(await created);
+    expect(c.reason).toBe("too-complex");
+    expect(c.diagnostics.map((x) => x.code)).toEqual(["E_DOCUMENT_TOO_COMPLEX"]);
+    expect(await d.storage.read(asDocId("deep"))).toBeUndefined();
+
+    successOf(await createDoc(d, asDocId("fin"), writer, statusSrc));
+    const w = rejectionOf(await writeDoc(d, asDocId("fin"), writer, deep));
+    expect(w.reason).toBe("too-complex");
+    expect(await d.storage.read(asDocId("fin"))).toBe(statusSrc);
+
+    // A stored over-complex document (written outside the pipeline) is never parsed.
+    await d.storage.writeAtomic(asDocId("stored"), `${statusSrc}\n${deep}`);
+    const p = rejectionOf(
+      await patchDoc(d, asDocId("stored"), asBlockId("s"), { value: "b" }, writer),
+    );
+    expect(p.reason).toBe("too-complex");
+    expect(p.diagnostics[0]?.message).toContain("not parsed");
+  });
+
+  it("with complexityLimits: false, a parse that throws is a validation rejection", async () => {
+    const d: PipelineDeps & { storage: ReturnType<typeof createMemStorage> } = {
+      ...deps(),
+      complexityLimits: false,
+    };
+    const created = rejectionOf(await createDoc(d, asDocId("deep"), writer, deep));
+    expect(created.reason).toBe("validation");
+    expect(created.diagnostics.map((x) => x.code)).toEqual(["E_PARSE_FAILED"]);
+    expect(await d.storage.read(asDocId("deep"))).toBeUndefined();
+
+    successOf(await createDoc(d, asDocId("fin"), writer, statusSrc));
+    const w = rejectionOf(await writeDoc(d, asDocId("fin"), writer, deep));
+    expect(w.reason).toBe("validation");
+    expect(w.diagnostics.map((x) => x.code)).toEqual(["E_PARSE_FAILED"]);
+
+    await d.storage.writeAtomic(asDocId("stored"), `${statusSrc}\n${deep}`);
+    const p = rejectionOf(
+      await patchDoc(d, asDocId("stored"), asBlockId("s"), { value: "b" }, writer),
+    );
+    expect(p.reason).toBe("validation");
+    expect(p.diagnostics.map((x) => x.code)).toEqual(["E_PARSE_FAILED"]);
+  });
+
+  it("honours custom limits", async () => {
+    const d = { ...deps(), complexityLimits: { maxContainerDepth: 2 } };
+    expect(rejectionOf(await createDoc(d, asDocId("a"), writer, "> > > x\n")).reason).toBe(
+      "too-complex",
+    );
+    successOf(await createDoc(d, asDocId("b"), writer, "> > x\n"));
+  });
+
+  it("lets a full-text write that fits replace a stored over-complex document, logging a reset", async () => {
+    const d = deps();
+    await d.storage.writeAtomic(asDocId("fin"), deep);
+    const r = successOf(await writeDoc(d, asDocId("fin"), writer, statusSrc));
+    expect(r.events?.map((e) => e.type).slice(0, 2)).toEqual(["doc.removed", "doc.created"]);
+    expect(await d.storage.read(asDocId("fin"))).toBe(statusSrc);
+  });
+
+  it("a write whose stored predecessor cannot be parsed still commits, logging a reset", async () => {
+    const d = { ...deps(), complexityLimits: false as const };
+    await d.storage.writeAtomic(asDocId("fin"), deep);
+    const r = successOf(await writeDoc(d, asDocId("fin"), writer, statusSrc));
+    expect(r.events?.map((e) => e.type).slice(0, 2)).toEqual(["doc.removed", "doc.created"]);
+  });
+});
+
+describe("complexityLimits validation", () => {
+  it("throws a TypeError for an invalid limits value, as createEngine does", async () => {
+    for (const bad of [{ maxBracketDepth: "8" }, { maxBraketDepth: 8 }, true]) {
+      const d = { ...deps(), complexityLimits: bad as unknown as ComplexityLimits };
+      await expect(createDoc(d, asDocId("a"), writer, "# A\n")).rejects.toThrow(TypeError);
+    }
   });
 });

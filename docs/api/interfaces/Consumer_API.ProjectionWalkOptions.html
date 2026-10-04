@@ -16,7 +16,7 @@
 </div></section>
 <div class="tsd-signature"><span class="tsd-signature-keyword">interface</span> <span class="tsd-kind-interface">ProjectionWalkOptions</span> <span class="tsd-signature-symbol">{</span><br/>    <a class="tsd-kind-property" href="#blocktypes">blockTypes</a><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">ReadonlyMap</span><span class="tsd-signature-symbol">&lt;</span><span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">,</span> <a href="../types/Consumer_API.AnyBlockType.html" class="tsd-signature-type tsd-kind-type-alias">AnyBlockType</a><span class="tsd-signature-symbol">&gt;</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#cache">cache</a><span class="tsd-signature-symbol">?:</span> <a href="Consumer_API.ProjectionWalkCache.html" class="tsd-signature-type tsd-kind-interface">ProjectionWalkCache</a><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#frontmatter">frontmatter</a><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">boolean</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#node">node</a><span class="tsd-signature-symbol">:</span> <a href="Consumer_API.ProjectionNode.html" class="tsd-signature-type tsd-kind-interface">ProjectionNode</a><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#projectorid">projectorId</a><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#unescaperefs">unescapeRefs</a><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">boolean</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#values">values</a><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">ReadonlyMap</span><span class="tsd-signature-symbol">&lt;</span><span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">,</span> <a href="Consumer_API.SourceValue.html" class="tsd-signature-type tsd-kind-interface">SourceValue</a><span class="tsd-signature-symbol">&gt;</span><span class="tsd-signature-symbol">;</span><br/><span class="tsd-signature-symbol">}</span></div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/f5572653a3364d62cc831110c6740fcb46e67d39/packages/core/src/project/walk.ts#L212">packages/core/src/project/walk.ts:212</a></li></ul></aside>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/project/walk.ts#L212">packages/core/src/project/walk.ts:212</a></li></ul></aside>
 <section class="tsd-panel-group tsd-index-group">
 <section class="tsd-panel tsd-index-panel">
 <details class="tsd-index-content tsd-accordion" open><summary class="tsd-accordion-summary tsd-index-summary"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><use href="../assets/icons.svg#icon-chevronDown"></use></svg>
@@ -41,7 +41,7 @@
 <div class="tsd-comment tsd-typography"><p>Registered block types, keyed by type name; without them no block has a hook.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/f5572653a3364d62cc831110c6740fcb46e67d39/packages/core/src/project/walk.ts#L223">packages/core/src/project/walk.ts:223</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/project/walk.ts#L223">packages/core/src/project/walk.ts:223</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="cache"><code class="tsd-tag">Optional</code> <code class="tsd-tag">Readonly</code><span>cache</span><a href="#cache" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">cache</span><span class="tsd-signature-symbol">?:</span> <a href="Consumer_API.ProjectionWalkCache.html" class="tsd-signature-type tsd-kind-interface">ProjectionWalkCache</a></div>
@@ -55,7 +55,7 @@ change while it is in use. Without one, every node computes that work
 itself.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/f5572653a3364d62cc831110c6740fcb46e67d39/packages/core/src/project/walk.ts#L252">packages/core/src/project/walk.ts:252</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/project/walk.ts#L252">packages/core/src/project/walk.ts:252</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="frontmatter"><code class="tsd-tag">Optional</code> <code class="tsd-tag">Readonly</code><span>frontmatter</span><a href="#frontmatter" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">frontmatter</span><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">boolean</span></div>
@@ -66,14 +66,14 @@ that hands the source to a markdown pipeline which drops frontmatter itself
 — the html projector does — sets this to <code>true</code> and lets it through.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/f5572653a3364d62cc831110c6740fcb46e67d39/packages/core/src/project/walk.ts#L231">packages/core/src/project/walk.ts:231</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/project/walk.ts#L231">packages/core/src/project/walk.ts:231</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="node"><code class="tsd-tag">Readonly</code><span>node</span><a href="#node" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">node</span><span class="tsd-signature-symbol">:</span> <a href="Consumer_API.ProjectionNode.html" class="tsd-signature-type tsd-kind-interface">ProjectionNode</a></div>
 <div class="tsd-comment tsd-typography"><p>The node to render: a merged node, or <a href="../functions/Consumer_API.documentNode.html" class="tsd-kind-function">documentNode</a> of a standalone document.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/f5572653a3364d62cc831110c6740fcb46e67d39/packages/core/src/project/walk.ts#L214">packages/core/src/project/walk.ts:214</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/project/walk.ts#L214">packages/core/src/project/walk.ts:214</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="projectorid"><code class="tsd-tag">Readonly</code><span>projector<wbr/>Id</span><a href="#projectorid" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">projectorId</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">string</span></div>
@@ -81,7 +81,7 @@ that hands the source to a markdown pipeline which drops frontmatter itself
 dispatched to — the same id the projector registers under.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/f5572653a3364d62cc831110c6740fcb46e67d39/packages/core/src/project/walk.ts#L221">packages/core/src/project/walk.ts:221</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/project/walk.ts#L221">packages/core/src/project/walk.ts:221</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="unescaperefs"><code class="tsd-tag">Optional</code> <code class="tsd-tag">Readonly</code><span>unescape<wbr/>Refs</span><a href="#unescaperefs" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">unescapeRefs</span><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">boolean</span></div>
@@ -94,14 +94,14 @@ regions the reader must get byte-for-byte are respected: backslashes inside
 a typed block's span, and a <code>\\{{</code> (an escaped backslash), are left alone.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/f5572653a3364d62cc831110c6740fcb46e67d39/packages/core/src/project/walk.ts#L241">packages/core/src/project/walk.ts:241</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/project/walk.ts#L241">packages/core/src/project/walk.ts:241</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="values"><code class="tsd-tag">Readonly</code><span>values</span><a href="#values" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">values</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">ReadonlyMap</span><span class="tsd-signature-symbol">&lt;</span><span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">,</span> <a href="Consumer_API.SourceValue.html" class="tsd-signature-type tsd-kind-interface">SourceValue</a><span class="tsd-signature-symbol">&gt;</span></div>
 <div class="tsd-comment tsd-typography"><p>Resolved live values for the projection, keyed by canonical key.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/f5572653a3364d62cc831110c6740fcb46e67d39/packages/core/src/project/walk.ts#L216">packages/core/src/project/walk.ts:216</a></li></ul></aside></section></section></details></div>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/project/walk.ts#L216">packages/core/src/project/walk.ts:216</a></li></ul></aside></section></section></details></div>
 <div class="col-sidebar">
 <div class="page-menu">
 <div class="tsd-navigation settings">

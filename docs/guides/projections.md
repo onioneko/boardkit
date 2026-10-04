@@ -150,11 +150,21 @@ document larger than `maxDocumentBytes`: **256 KiB** of UTF-8 by default, export
   ends with exactly the new document.
 
 The limit bounds the cost of one document, but it does not make parsing linear. Some markdown
-(dense emphasis, long runs of escaped characters, many footnote references) still parses in
-superlinear time well below the limit: adversarial input near 256 KiB can occupy the parser for
-more than ten seconds, and a write parses its content more than once. A host that accepts writes
-from untrusted parties should keep the limit low, or parse off the main thread (for example by
-running the engine in a worker).
+still parses in superlinear time well below the limit, and a write parses its content more than
+once. Measured on Node 24, parse alone, each shape filled to 256 KiB and within the
+[complexity limits](#complexity-limits) below:
+
+| Shape | 64 KiB | 256 KiB |
+|---|---|---|
+| Plain prose | 0.03 s | 0.14 s |
+| A long flat list (`- x` on every line) | 1.2 s | 13 s |
+| A list 32 levels deep on every line (`- - - … x`) | 1.8–2.0 s | 35–50 s |
+| Dense emphasis (`*a* ` repeated) | 0.9 s | 16 s |
+
+Long runs of escaped characters, many footnote references, and long paragraphs of many short
+lines or references (`{{source:a}}` on every line) are slow too. A host that accepts writes from
+untrusted parties should keep the limit low (each of the costs above is under a second at
+32 KiB), or parse off the main thread (for example by running the engine in a worker).
 
 Set the limit when creating the engine. It is a non-negative integer, or `Infinity` to remove it;
 any other value throws a `TypeError`:
@@ -162,6 +172,67 @@ any other value throws a `TypeError`:
 ```ts
 const engine = createEngine({ storage, maxDocumentBytes: 64 * 1024 });
 ```
+
+### Complexity limits
+
+Some shapes are worse than slow. The markdown parser's work grows quadratically with how deeply
+containers nest, and a few thousand levels on one line overflow the call stack: an 8 KB line of
+`>` characters is enough. Nested emphasis behaves the same way: a 36 KB paragraph of
+alternating `*a _b` openers parses for about 16 seconds and then overflows. So before any parse,
+the engine runs a linear scan of the source against five limits, set by `complexityLimits` and
+exported as `DEFAULT_COMPLEXITY_LIMITS`:
+
+| Field | Default | What it counts |
+|---|---|---|
+| `maxContainerDepth` | 32 | Container markers at the start of one line: `>`, list markers (`-`, `*`, `+`, `1.`, `1)`) and footnote definitions (`[^x]:`) |
+| `maxIndentColumns` | 160 | Columns of whitespace in one line's prefix, a tab advancing to the next multiple of 4 |
+| `maxBracketDepth` | 32 | `[` nesting in one paragraph; escapes are skipped, and a blank line or a line of only `>` markers resets the count (an empty list item does not, since it cannot end a paragraph) |
+| `maxDelimiterRun` | 64 | A run of one of `*`, `_` or `~`; a line of one such character (or `-` or a backtick) and whitespace, a thematic break or code fence, is not counted |
+| `maxEmphasisDepth` | 256 | Emphasis and strikethrough nesting in one paragraph, estimated with the parser's own rules for which `*`, `_` and `~` runs can open or close: a run that can open adds its length, and a run that can only close cancels openers of its own marker that could not also close |
+
+A document over any limit is handled exactly like one over the size limit, with an
+`E_DOCUMENT_TOO_COMPLEX` diagnostic that gives the line, and reason `too-complex` for a rejected
+write, patch or intent.
+
+Fenced code holds no markdown, so the scan does not count brackets, delimiter runs or emphasis
+inside it. It follows CommonMark's fence rules (3 or more backticks or tildes, closed by a run
+of the same character at least as long, indented at most 3 spaces; an unclosed fence runs to
+the end of the document or of its block quote), but only where it can follow them exactly: a
+fence at the top level or in block quotes, indented at most 1 space. A fence it cannot follow
+(in a list item, indented 2 or more spaces, or after a tab), or a line that may start an HTML
+block, ends fence skipping for the rest of the document, so the code after it is counted like
+prose. That never lets a fence hide prose from the scan; a seeded property test checks every
+skipped line against the parser. Front matter is never searched for fences.
+
+The counts are upper bounds, so some ordinary text is over-counted. Code spans are not skipped,
+and a `*` inside one, or between two letters or digits (`2*3`), can count as opening emphasis.
+A paragraph, table or tight list with more than about 256 such runs is refused: for example a
+table of roughly 85 rows of globs like `` `src/**/*.ts` ``, or about 250 rows of `` `*.md` ``.
+Raise `maxEmphasisDepth` if your documents need more. The default of 256 still bounds the cost:
+paragraphs nested 256 deep, filled to 256 KiB, parse in about 4 seconds, well under the costs
+in the table above and far from the depth that overflows the stack (about 3,000).
+
+The limits are on by default. Raise one, or set it to `Infinity`, if real documents need it, or
+pass `false` to turn the scan off:
+
+```ts
+const engine = createEngine({ storage, complexityLimits: { maxDelimiterRun: 200 } });
+```
+
+Each field is a non-negative integer or `Infinity`; any other value, or an unknown field, throws
+a `TypeError`. Each count is meant as an upper bound on the nesting the parser builds: the
+emphasis estimate follows the parser's own open and close rules, and a seeded property test
+checks that nothing the scan accepts parses deeper than the limit. That rules out the known
+stack overflows (deep containers, brackets and emphasis) and the worst nesting costs. The scan
+is still a model of the parser, not the parser, so treat this as tested rather than proven, and
+it does not bound every superlinear shape: see the table above. A parse that overflows anyway
+is caught, as described next.
+
+Whatever the limits, a parse that throws never escapes the engine. A write is rejected with
+reason `validation` and an `E_PARSE_FAILED` diagnostic. A stored document that fails to parse is
+treated as over a limit: its projection returns `ok: false`, an include of it stays verbatim, it
+contributes no include edges to scoped subscriptions, and `getBlock` treats it as absent. The
+engine remembers the failure by content, so the document is not parsed again until it changes.
 
 The engine parses each document once per content: projections, `refGraph` and `getBlock` reuse
 the parse of a document that has not changed since it was last read, through includes too, so
@@ -219,9 +290,10 @@ prose refs versus a block's own `sources` declaration, and canonical keys.
 ## Projection middleware
 
 Projection middleware wraps the PROJECT stage's projector call. It may amend the projector's
-`options` before `next()`, or transform the `output` after `next()`; a rejection degrades the
-output the same way a throwing projector does (below), with the rejection's diagnostics
-attached (fail-soft — the projection never throws). Per-reader redaction over the merged tree lives in projection middleware — see
+`options` before `next()`, or transform the `output` after `next()`. A middleware that throws
+degrades the output the same way a throwing projector does (below): a `WriteRejection` attaches
+its own diagnostics, and any other error attaches an `E_MIDDLEWARE_ERROR` diagnostic carrying
+its message (fail-soft — the projection never throws because of a middleware). Per-reader redaction over the merged tree lives in projection middleware — see
 [Middleware](middleware.md).
 
 ## Projector exceptions
@@ -230,6 +302,13 @@ A projector that throws degrades rather than propagating the error, so one bad p
 breaks a whole projection pipeline. The result carries an `E_PROJECTOR_ERROR` diagnostic, and
 its output is the projector's `degrade(src, diagnostics)` return value — or, for a projector
 that declares no `degrade`, the raw source text.
+
+Content never makes `projection()` throw: a throwing projector, projection middleware or block
+hook degrades, and a document that cannot be parsed comes back `ok: false`. An error from the
+storage port when reading the projected document itself (a file that is a directory, or a
+symlink loop) is not content, and still rejects the call. The same error on an included document
+leaves that include verbatim with an `E_INCLUDE_UNREADABLE` diagnostic, and on a document with a
+scoped subscriber it never fails a write.
 
 Raw source is the right fallback for `text`, whose output *is* markdown. It is the wrong one for
 any projector whose output a host renders: raw markdown handed to an HTML sink is unsanitized

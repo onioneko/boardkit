@@ -16,14 +16,14 @@
 the adapter's obligation (the fs default uses temp + fsync + rename).</p>
 </div></section>
 <div class="tsd-signature"><span class="tsd-signature-keyword">interface</span> <span class="tsd-kind-interface">Storage</span> <span class="tsd-signature-symbol">{</span><br/>    <a class="tsd-kind-property" href="#rootdir">rootDir</a><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-call-signature" href="#defaulteventsink-1">defaultEventSink</a><span class="tsd-signature-symbol">?</span><span class="tsd-signature-symbol">()</span><span class="tsd-signature-symbol">:</span> <a href="Consumer_API.EventSink.html" class="tsd-signature-type tsd-kind-interface">EventSink</a><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-call-signature" href="#defaultlock-1">defaultLock</a><span class="tsd-signature-symbol">?</span><span class="tsd-signature-symbol">(</span><span class="tsd-kind-parameter">docId</span><span class="tsd-signature-symbol">:</span> <a href="../types/Consumer_API.DocId.html" class="tsd-signature-type tsd-kind-type-alias">DocId</a><span class="tsd-signature-symbol">)</span><span class="tsd-signature-symbol">:</span> <a href="Consumer_API.Lock.html" class="tsd-signature-type tsd-kind-interface">Lock</a><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-call-signature" href="#delete-1">delete</a><span class="tsd-signature-symbol">?</span><span class="tsd-signature-symbol">(</span><span class="tsd-kind-parameter">docId</span><span class="tsd-signature-symbol">:</span> <a href="../types/Consumer_API.DocId.html" class="tsd-signature-type tsd-kind-type-alias">DocId</a><span class="tsd-signature-symbol">)</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">Promise</span><span class="tsd-signature-symbol">&lt;</span><span class="tsd-signature-type">void</span><span class="tsd-signature-symbol">&gt;</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-call-signature" href="#list-1">list</a><span class="tsd-signature-symbol">()</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">Promise</span><span class="tsd-signature-symbol">&lt;</span><a href="../types/Consumer_API.DocId.html" class="tsd-signature-type tsd-kind-type-alias">DocId</a><span class="tsd-signature-symbol">[]</span><span class="tsd-signature-symbol">&gt;</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-call-signature" href="#read-1">read</a><span class="tsd-signature-symbol">(</span><span class="tsd-kind-parameter">docId</span><span class="tsd-signature-symbol">:</span> <a href="../types/Consumer_API.DocId.html" class="tsd-signature-type tsd-kind-type-alias">DocId</a><span class="tsd-signature-symbol">)</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">Promise</span><span class="tsd-signature-symbol">&lt;</span><span class="tsd-signature-type">string</span> <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">undefined</span><span class="tsd-signature-symbol">&gt;</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-call-signature" href="#writeatomic-1">writeAtomic</a><span class="tsd-signature-symbol">(</span><span class="tsd-kind-parameter">docId</span><span class="tsd-signature-symbol">:</span> <a href="../types/Consumer_API.DocId.html" class="tsd-signature-type tsd-kind-type-alias">DocId</a><span class="tsd-signature-symbol">,</span> <span class="tsd-kind-parameter">content</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">)</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">Promise</span><span class="tsd-signature-symbol">&lt;</span><span class="tsd-signature-type">void</span><span class="tsd-signature-symbol">&gt;</span><span class="tsd-signature-symbol">;</span><br/><span class="tsd-signature-symbol">}</span></div>
-<section class="tsd-panel tsd-hierarchy" data-refl="523">
+<section class="tsd-panel tsd-hierarchy" data-refl="531">
 <h4>Hierarchy (<a href="../hierarchy.html#Consumer API.Storage">View Summary</a>)</h4>
 <ul class="tsd-hierarchy">
 <li class="tsd-hierarchy-item"><span class="tsd-hierarchy-target">Storage</span>
 <ul class="tsd-hierarchy">
 <li class="tsd-hierarchy-item"><a href="Consumer_API.MemStorage.html" class="tsd-signature-type tsd-kind-interface">MemStorage</a></li></ul></li></ul></section><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/f5572653a3364d62cc831110c6740fcb46e67d39/packages/core/src/ports/ports.ts#L16">packages/core/src/ports/ports.ts:16</a></li></ul></aside>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/ports/ports.ts#L16">packages/core/src/ports/ports.ts:16</a></li></ul></aside>
 <section class="tsd-panel-group tsd-index-group">
 <section class="tsd-panel tsd-index-panel">
 <details class="tsd-index-content tsd-accordion" open><summary class="tsd-accordion-summary tsd-index-summary"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><use href="../assets/icons.svg#icon-chevronDown"></use></svg>
@@ -53,7 +53,7 @@ the adapter's obligation (the fs default uses temp + fsync + rename).</p>
 storage leaves it absent, so <code>watch: true</code> is a programming error there.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/f5572653a3364d62cc831110c6740fcb46e67d39/packages/core/src/ports/ports.ts#L49">packages/core/src/ports/ports.ts:49</a></li></ul></aside></section></section></details>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/ports/ports.ts#L49">packages/core/src/ports/ports.ts:49</a></li></ul></aside></section></section></details>
 <details class="tsd-panel-group tsd-member-group tsd-accordion" open><summary class="tsd-accordion-summary" data-key="section-Methods"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><use href="../assets/icons.svg#icon-chevronDown"></use></svg>
 <h2 class="tsd-anchor-link" id="methods-1">Methods<a href="#methods-1" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h2></summary>
 <section>
@@ -66,7 +66,7 @@ storage leaves it absent, so <code>watch: true</code> is a programming error the
 <h4 class="tsd-returns-title">Returns <a href="Consumer_API.EventSink.html" class="tsd-signature-type tsd-kind-interface">EventSink</a></h4><p>The default event sink the engine appends commit events to.</p>
 <aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/f5572653a3364d62cc831110c6740fcb46e67d39/packages/core/src/ports/ports.ts#L43">packages/core/src/ports/ports.ts:43</a></li></ul></aside></div></li></ul></section>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/ports/ports.ts#L43">packages/core/src/ports/ports.ts:43</a></li></ul></aside></div></li></ul></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="defaultlock"><code class="tsd-tag">Optional</code><span>default<wbr/>Lock</span><a href="#defaultlock" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <ul class="tsd-signatures">
@@ -84,7 +84,7 @@ storage leaves it absent, so <code>watch: true</code> is a programming error the
 <h4 class="tsd-returns-title">Returns <a href="Consumer_API.Lock.html" class="tsd-signature-type tsd-kind-interface">Lock</a></h4><p>A lock for that document.</p>
 <aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/f5572653a3364d62cc831110c6740fcb46e67d39/packages/core/src/ports/ports.ts#L41">packages/core/src/ports/ports.ts:41</a></li></ul></aside></div></li></ul></section>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/ports/ports.ts#L41">packages/core/src/ports/ports.ts:41</a></li></ul></aside></div></li></ul></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="delete"><code class="tsd-tag">Optional</code><span>delete</span><a href="#delete" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <ul class="tsd-signatures">
@@ -101,7 +101,7 @@ storage leaves it absent, so <code>watch: true</code> is a programming error the
 </div></li></ul></div>
 <h4 class="tsd-returns-title">Returns <span class="tsd-signature-type">Promise</span><span class="tsd-signature-symbol">&lt;</span><span class="tsd-signature-type">void</span><span class="tsd-signature-symbol">&gt;</span></h4><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/f5572653a3364d62cc831110c6740fcb46e67d39/packages/core/src/ports/ports.ts#L33">packages/core/src/ports/ports.ts:33</a></li></ul></aside></div></li></ul></section>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/ports/ports.ts#L33">packages/core/src/ports/ports.ts:33</a></li></ul></aside></div></li></ul></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="list"><span>list</span><a href="#list" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <ul class="tsd-signatures">
@@ -111,7 +111,7 @@ storage leaves it absent, so <code>watch: true</code> is a programming error the
 <h4 class="tsd-returns-title">Returns <span class="tsd-signature-type">Promise</span><span class="tsd-signature-symbol">&lt;</span><a href="../types/Consumer_API.DocId.html" class="tsd-signature-type tsd-kind-type-alias">DocId</a><span class="tsd-signature-symbol">[]</span><span class="tsd-signature-symbol">&gt;</span></h4><p>All document ids currently in the workspace.</p>
 <aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/f5572653a3364d62cc831110c6740fcb46e67d39/packages/core/src/ports/ports.ts#L35">packages/core/src/ports/ports.ts:35</a></li></ul></aside></div></li></ul></section>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/ports/ports.ts#L35">packages/core/src/ports/ports.ts:35</a></li></ul></aside></div></li></ul></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="read"><span>read</span><a href="#read" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <ul class="tsd-signatures">
@@ -129,7 +129,7 @@ storage leaves it absent, so <code>watch: true</code> is a programming error the
 <h4 class="tsd-returns-title">Returns <span class="tsd-signature-type">Promise</span><span class="tsd-signature-symbol">&lt;</span><span class="tsd-signature-type">string</span> <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">undefined</span><span class="tsd-signature-symbol">&gt;</span></h4><p>The raw source, or <code>undefined</code> when the document does not exist.</p>
 <aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/f5572653a3364d62cc831110c6740fcb46e67d39/packages/core/src/ports/ports.ts#L22">packages/core/src/ports/ports.ts:22</a></li></ul></aside></div></li></ul></section>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/ports/ports.ts#L22">packages/core/src/ports/ports.ts:22</a></li></ul></aside></div></li></ul></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="writeatomic"><span>write<wbr/>Atomic</span><a href="#writeatomic" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <ul class="tsd-signatures">
@@ -149,7 +149,7 @@ storage leaves it absent, so <code>watch: true</code> is a programming error the
 </div></li></ul></div>
 <h4 class="tsd-returns-title">Returns <span class="tsd-signature-type">Promise</span><span class="tsd-signature-symbol">&lt;</span><span class="tsd-signature-type">void</span><span class="tsd-signature-symbol">&gt;</span></h4><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/f5572653a3364d62cc831110c6740fcb46e67d39/packages/core/src/ports/ports.ts#L28">packages/core/src/ports/ports.ts:28</a></li></ul></aside></div></li></ul></section></section></details></div>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/ports/ports.ts#L28">packages/core/src/ports/ports.ts:28</a></li></ul></aside></div></li></ul></section></section></details></div>
 <div class="col-sidebar">
 <div class="page-menu">
 <div class="tsd-navigation settings">

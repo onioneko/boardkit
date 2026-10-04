@@ -3,12 +3,12 @@ import type { Diagnostic } from "../model/diagnostic.js";
 import { diagnostic } from "../model/diagnostic.js";
 import type { Block, ParsedDoc } from "../model/doc.js";
 import { tryBlockId, tryDocId } from "../model/ids.js";
-import { parseDoc } from "../parse/pipeline.js";
 import {
   type PatchDeltaFn,
   type PipelineDeps,
+  parseLimitRejection,
   patchDoc,
-  sizeRejection,
+  tryParseDoc,
   type WriteResult,
   type Writer,
 } from "../write/pipeline.js";
@@ -76,9 +76,11 @@ export async function applyIntent(
   if (current === undefined) {
     return reject("missing-doc", [diagnostic("E_DOC_MISSING", `document not found: ${docId}`)]);
   }
-  const tooLarge = sizeRejection(deps, docId, current, "read");
-  if (tooLarge !== undefined) return tooLarge;
-  const parsed = parseDoc(current, deps.parseOptions);
+  const overLimit = parseLimitRejection(deps, docId, current, "read");
+  if (overLimit !== undefined) return overLimit;
+  const attempt = tryParseDoc(current, deps.parseOptions, docId);
+  if (!attempt.ok) return reject("validation", [attempt.diagnostic]);
+  const parsed = attempt.parsed;
   const block = blocksOf(parsed).find((b) => b.blockId === blockId);
   if (block === undefined) {
     return reject("missing-block", [

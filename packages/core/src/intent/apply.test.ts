@@ -534,3 +534,29 @@ describe("applyIntent × write middleware (proposal origin)", () => {
     expect(await d.storage.read(asDocId("fin"))).toBe(src);
   });
 });
+
+describe("applyIntent against an over-complex or unparseable stored document", () => {
+  const deep = `${src}\n${">".repeat(8000)} x\n`;
+  const intent = {
+    docId: "fin",
+    blockId: "d",
+    affordance: "transition",
+    params: { to: "approved" },
+  } as const;
+
+  it("rejects with too-complex before parsing", async () => {
+    const d = deps();
+    await d.storage.writeAtomic(asDocId("fin"), deep);
+    const r = rejectionOf(await applyIntent(d, intent, writer));
+    expect(r.reason).toBe("too-complex");
+    expect(r.diagnostics.map((x) => x.code)).toEqual(["E_DOCUMENT_TOO_COMPLEX"]);
+  });
+
+  it("with complexityLimits: false, rejects a throwing parse with E_PARSE_FAILED", async () => {
+    const d = { ...deps(), complexityLimits: false as const };
+    await d.storage.writeAtomic(asDocId("fin"), deep);
+    const r = rejectionOf(await applyIntent(d, intent, writer));
+    expect(r.reason).toBe("validation");
+    expect(r.diagnostics.map((x) => x.code)).toEqual(["E_PARSE_FAILED"]);
+  });
+});

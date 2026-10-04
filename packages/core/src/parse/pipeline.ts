@@ -30,8 +30,29 @@ function resolveRefKinds(
 }
 
 /**
+ * The `E_PARSE_FAILED` diagnostic for an exception thrown by {@link parseDoc}.
+ * @param docId The document whose parse threw.
+ * @param err What the parser threw.
+ * @returns The diagnostic.
+ */
+export function parseFailedDiagnostic(docId: string, err: unknown): Diagnostic {
+  return diagnostic(
+    "E_PARSE_FAILED",
+    `document ${JSON.stringify(docId)} could not be parsed: ${
+      err instanceof Error ? err.message : String(err)
+    }`,
+    { nodeId: docId },
+  );
+}
+
+/**
  * Parse one document into a ParsedDoc. Content errors are reported as
  * diagnostics and never thrown (fail-soft); only programming errors throw.
+ * The one exception is input deep enough to exhaust the call stack (thousands
+ * of nested containers): the markdown parser then throws a `RangeError`. The
+ * engine screens such input out first (`EngineOptions.complexityLimits`) and
+ * turns a throw that still happens into an `E_PARSE_FAILED` diagnostic
+ * ({@link parseFailedDiagnostic}).
  * @param src The raw markdown source text to parse.
  * @param options Parse options; `blockTypes` selects which fences become typed blocks.
  * @returns The parsed document: frontmatter, sections/blocks, refs, spans, and diagnostics.
