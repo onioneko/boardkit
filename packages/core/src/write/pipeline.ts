@@ -153,7 +153,9 @@ export interface PipelineDeps {
    * Markdown complexity limits; absent takes `DEFAULT_COMPLEXITY_LIMITS`, and
    * `false` turns the check off. A write whose result is over a limit is
    * rejected with reason `too-complex`, and a stored document over one is not
-   * parsed: patches and intents against it are rejected the same way.
+   * parsed: patches and intents against it are rejected the same way. The
+   * value is validated on use: an invalid one is a programming error, and the
+   * write rejects with a `TypeError`, as `createEngine` throws for it.
    */
   readonly complexityLimits?: ComplexityLimits | false;
 }

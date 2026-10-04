@@ -229,3 +229,19 @@ describe("complexity limits", () => {
     expect(codes(outcome?.diagnostics ?? [])).toEqual(["E_PARSE_FAILED"]);
   });
 });
+
+describe("createExternalWriteHandler complexityLimits", () => {
+  it("throws a TypeError at construction for an invalid limits value", () => {
+    for (const bad of [{ maxBracketDepth: "8" }, { nope: 1 }, null]) {
+      expect(() =>
+        createExternalWriteHandler({
+          storage: createMemStorage(),
+          clock: () => "2026-08-21T00:00:00Z",
+          blockTypes: new Map(),
+          rootDir: "/ws",
+          complexityLimits: bad as unknown as ComplexityLimits,
+        }),
+      ).toThrow(TypeError);
+    }
+  });
+});

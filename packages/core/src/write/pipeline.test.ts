@@ -5,6 +5,7 @@ import { type WriteMiddleware, WriteRejection } from "../middleware/compose.js";
 import type { Diagnostic } from "../model/diagnostic.js";
 import type { Block } from "../model/doc.js";
 import { asBlockId, asDocId } from "../model/ids.js";
+import type { ComplexityLimits } from "../parse/complexity.js";
 import { parseDoc } from "../parse/pipeline.js";
 import { createMemStorage } from "../ports/mem.js";
 import type { Storage } from "../ports/ports.js";
@@ -791,5 +792,14 @@ describe("complexity limits and parse failures (fail-soft)", () => {
     await d.storage.writeAtomic(asDocId("fin"), deep);
     const r = successOf(await writeDoc(d, asDocId("fin"), writer, statusSrc));
     expect(r.events?.map((e) => e.type).slice(0, 2)).toEqual(["doc.removed", "doc.created"]);
+  });
+});
+
+describe("complexityLimits validation", () => {
+  it("throws a TypeError for an invalid limits value, as createEngine does", async () => {
+    for (const bad of [{ maxBracketDepth: "8" }, { maxBraketDepth: 8 }, true]) {
+      const d = { ...deps(), complexityLimits: bad as unknown as ComplexityLimits };
+      await expect(createDoc(d, asDocId("a"), writer, "# A\n")).rejects.toThrow(TypeError);
+    }
   });
 });

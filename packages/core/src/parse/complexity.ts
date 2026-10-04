@@ -399,12 +399,14 @@ export function resolveComplexityLimits(
 
 /**
  * The complexity diagnostic for a source under an optional, unresolved limits
- * value, as the pipeline modules receive it.
+ * value, as the pipeline modules receive it. The value is validated on every
+ * call, the same way {@link resolveComplexityLimits} validates it.
  * @param docId The document the source belongs to.
  * @param src The document source.
  * @param limits `undefined` for the defaults, `false` for no check, or the limits.
  * @param phase `"write"` or `"read"`, as for {@link documentComplexityDiagnostic}.
  * @returns The diagnostic, or `undefined` when within the limits or unchecked.
+ * @throws TypeError when `limits` is invalid (a programming error).
  */
 export function complexityDiagnostic(
   docId: string,
@@ -412,8 +414,7 @@ export function complexityDiagnostic(
   limits: ComplexityLimits | false | undefined,
   phase: "read" | "write",
 ): Diagnostic | undefined {
-  if (limits === false) return undefined;
-  const resolved =
-    limits === undefined ? DEFAULT_COMPLEXITY_LIMITS : { ...DEFAULT_COMPLEXITY_LIMITS, ...limits };
+  const resolved = resolveComplexityLimits(limits);
+  if (resolved === false) return undefined;
   return documentComplexityDiagnostic(docId, src, resolved, phase);
 }

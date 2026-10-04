@@ -214,3 +214,20 @@ describe("resolveIncludes: parse failures and complexity limits (fail-soft)", ()
     expect(off.diagnostics.map((d) => d.code)).toEqual(["E_PARSE_FAILED"]);
   });
 });
+
+describe("resolveIncludes: complexityLimits validation", () => {
+  it("throws a TypeError for an invalid limits value", async () => {
+    const storage = createMemStorage();
+    await storage.writeAtomic(asDocId("board"), BOARD);
+    await expect(
+      resolveIncludes(
+        asDocId("board"),
+        storage,
+        {},
+        {
+          complexityLimits: { maxBracketDepth: -1 },
+        },
+      ),
+    ).rejects.toThrow(TypeError);
+  });
+});

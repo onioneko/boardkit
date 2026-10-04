@@ -6,7 +6,11 @@ import { docVersion } from "../engine/version.js";
 import type { Diagnostic } from "../model/diagnostic.js";
 import type { ParsedDoc } from "../model/doc.js";
 import { asDocId, type DocId } from "../model/ids.js";
-import { type ComplexityLimits, complexityDiagnostic } from "../parse/complexity.js";
+import {
+  type ComplexityLimits,
+  complexityDiagnostic,
+  resolveComplexityLimits,
+} from "../parse/complexity.js";
 import type { ParseOptions } from "../parse/options.js";
 import { parseDoc, parseFailedDiagnostic } from "../parse/pipeline.js";
 import {
@@ -51,7 +55,9 @@ export interface ExternalWriteDeps {
    * Markdown complexity limits; absent takes `DEFAULT_COMPLEXITY_LIMITS`, and
    * `false` turns the check off. An edited file over a limit is not parsed or
    * evented: the outcome carries an `E_DOCUMENT_TOO_COMPLEX` diagnostic. A
-   * file whose parse throws is not evented either (`E_PARSE_FAILED`).
+   * file whose parse throws is not evented either (`E_PARSE_FAILED`). An
+   * invalid value is a programming error and throws a `TypeError` from
+   * {@link createExternalWriteHandler}.
    */
   readonly complexityLimits?: ComplexityLimits | false;
 }
@@ -100,10 +106,11 @@ export function createExternalWriteHandler(deps: ExternalWriteDeps): ExternalWri
   const lastVersion = new Map<DocId, string>();
   const lastTree = new Map<DocId, ParsedDoc>();
   const maxDocumentBytes = deps.maxDocumentBytes ?? DEFAULT_MAX_DOCUMENT_BYTES;
+  const complexityLimits = resolveComplexityLimits(deps.complexityLimits);
   /** The size or complexity diagnostic for a source, or `undefined` when it may be parsed. */
   const overLimit = (docId: DocId, src: string): Diagnostic | undefined =>
     documentSizeDiagnostic(docId, src, maxDocumentBytes, "read") ??
-    complexityDiagnostic(docId, src, deps.complexityLimits, "read");
+    complexityDiagnostic(docId, src, complexityLimits, "read");
   /** Parse, or `undefined` when the parser throws. */
   const tryParse = (src: string): ParsedDoc | undefined => {
     try {
@@ -125,7 +132,7 @@ export function createExternalWriteHandler(deps: ExternalWriteDeps): ExternalWri
       lastVersion.set(docId, docVersion(src));
       const parsed =
         exceedsDocumentLimit(src, maxDocumentBytes) ||
-        complexityDiagnostic(docId, src, deps.complexityLimits, "read") !== undefined
+        complexityDiagnostic(docId, src, complexityLimits, "read") !== undefined
           ? undefined
           : tryParse(src);
       if (parsed === undefined) lastTree.delete(docId);

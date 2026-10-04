@@ -2,7 +2,11 @@ import type { Diagnostic } from "../model/diagnostic.js";
 import { diagnostic } from "../model/diagnostic.js";
 import type { ParsedDoc, Section } from "../model/doc.js";
 import type { DocId, SectionId } from "../model/ids.js";
-import { type ComplexityLimits, complexityDiagnostic } from "../parse/complexity.js";
+import {
+  type ComplexityLimits,
+  complexityDiagnostic,
+  resolveComplexityLimits,
+} from "../parse/complexity.js";
 import type { ParseOptions } from "../parse/options.js";
 import { parseDoc, parseFailedDiagnostic } from "../parse/pipeline.js";
 import { DEFAULT_MAX_DOCUMENT_BYTES, documentSizeDiagnostic } from "../parse/size.js";
@@ -91,6 +95,8 @@ export interface LinkOptions {
    * Documents over a markdown complexity limit are not parsed, with the same
    * outcome as an oversized one and an `E_DOCUMENT_TOO_COMPLEX` diagnostic.
    * Absent takes `DEFAULT_COMPLEXITY_LIMITS`; `false` turns the check off.
+   * An invalid value is a programming error: `resolveIncludes` rejects with a
+   * `TypeError`.
    */
   readonly complexityLimits?: ComplexityLimits | false;
 }
@@ -117,9 +123,10 @@ export async function resolveIncludes(
 ): Promise<LinkResult> {
   const parse = link.parse ?? ((_docId: DocId, src: string) => parseDoc(src, options));
   const maxDocumentBytes = link.maxDocumentBytes ?? DEFAULT_MAX_DOCUMENT_BYTES;
+  const complexityLimits = resolveComplexityLimits(link.complexityLimits);
   const overLimit = (id: DocId, src: string): Diagnostic | undefined =>
     documentSizeDiagnostic(id, src, maxDocumentBytes, "read") ??
-    complexityDiagnostic(id, src, link.complexityLimits, "read");
+    complexityDiagnostic(id, src, complexityLimits, "read");
   const docs = new Map<DocId, LoadedDoc>();
   const includes: ResolvedInclude[] = [];
   const diagnostics: Diagnostic[] = [];

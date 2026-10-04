@@ -184,11 +184,18 @@ describe("parse scaling", () => {
     const prose = fill("lorem ipsum dolor sit amet\n");
     const scan = (src: string) =>
       documentComplexityDiagnostic("d", src, DEFAULT_COMPLEXITY_LIMITS, "write");
-    for (let k = 0; k < 3; k += 1) scan(prose); // warm up
-    const baseline = Math.max(timed(() => scan(prose)).ms, 0.5);
+    // The fastest of several runs, so a pause on a busy machine (GC, another
+    // test file) skews neither side of the ratio.
+    const fastest = (src: string): number => {
+      let best = Number.POSITIVE_INFINITY;
+      for (let k = 0; k < 5; k += 1) best = Math.min(best, timed(() => scan(src)).ms);
+      return Math.max(best, 0.5);
+    };
+    const baseline = fastest(prose);
     for (const [shape, src] of Object.entries(hostile)) {
       expect(src.length, shape).toBeGreaterThanOrEqual(size - 64);
-      const { value, ms } = timed(() => scan(src));
+      const value = scan(src);
+      const ms = fastest(src);
       expect({ shape, code: value?.code }).toEqual({ shape, code: "E_DOCUMENT_TOO_COMPLEX" });
       // The scan stops at the first bound exceeded, so a refusal never costs
       // more than scanning ordinary prose of the same size.
