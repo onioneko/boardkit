@@ -85,6 +85,21 @@ describe("engine.importDoc", () => {
     expect(p.diagnostics.map((d) => d.code)).toEqual(["E_DOCUMENT_TOO_LARGE"]);
   });
 
+  it("stores content over a complexity limit, which then degrades on read", async () => {
+    const { engine } = makeEngine({ complexityLimits: { maxContainerDepth: 2 } });
+    const deep = "# Deep\n\n> > > > deep\n";
+    const created = await engine.createDoc("deep", { writer, content: deep });
+    expect(created.ok ? undefined : created.rejection.reason).toBe("too-complex");
+
+    const r = await engine.importDoc("deep", { writer, content: deep });
+    expect(r.ok).toBe(true);
+    expect((await engine.getDoc("deep"))?.src).toBe(deep);
+    const p = await engine.projection("deep", "text", {});
+    expect(p.ok).toBe(false);
+    expect(p.diagnostics.map((d) => d.code)).toEqual(["E_DOCUMENT_TOO_COMPLEX"]);
+    expect(await engine.getBlock("deep", "x")).toBeUndefined();
+  });
+
   it("rejects an invalid id fail-soft", async () => {
     const { engine } = makeEngine();
     const r = await engine.importDoc("../x", { writer, content: broken });
