@@ -333,10 +333,13 @@ const REGRESSION_SEEDS = [26, 41, 158, 216, 499, 606, 805, 893];
 const FULL_REGRESSION_SEEDS = [900];
 
 /**
- * How many `full` seeds CI runs. A run is about 40 steps of a few milliseconds
- * each; set BOARDKIT_SEQUENCE_SEEDS for a longer soak (for example 5000).
+ * How many `full` seeds CI runs, and how many steps each. A step takes a few
+ * milliseconds. Some failures need many steps to set up (seed 900 first fails
+ * at step 40), so CI runs 60. Set BOARDKIT_SEQUENCE_SEEDS and
+ * BOARDKIT_SEQUENCE_STEPS for a longer soak (for example 3000 seeds).
  */
 const FULL_SEEDS = Number(process.env.BOARDKIT_SEQUENCE_SEEDS ?? 200);
+const FULL_STEPS = Number(process.env.BOARDKIT_SEQUENCE_STEPS ?? 60);
 
 describe("the incremental reverse index and the seeded parse cache match a rebuild", () => {
   for (const seed of FULL_REGRESSION_SEEDS) {
@@ -350,11 +353,11 @@ describe("the incremental reverse index and the seeded parse cache match a rebui
     });
   }
   it(
-    `random runs, ${FULL_SEEDS} seeds of 40 steps, all operations`,
+    `random runs, ${FULL_SEEDS} seeds of ${FULL_STEPS} steps, all operations`,
     async () => {
-      for (let seed = 1; seed <= FULL_SEEDS; seed += 1) await run(seed, 40, "full");
+      for (let seed = 1; seed <= FULL_SEEDS; seed += 1) await run(seed, FULL_STEPS, "full");
     },
-    Math.max(120_000, FULL_SEEDS * 400),
+    Math.max(120_000, FULL_SEEDS * FULL_STEPS * 10),
   );
 });
 
