@@ -6,6 +6,7 @@ import {
   type DocId,
   documentNode,
   docVersion,
+  intentExpected,
   type MergedInclude,
   type MergedNode,
   type MergedTree,
@@ -259,22 +260,6 @@ function prefixFootnoteLinks(tree: Root): void {
 }
 
 /**
- * Attr values rendered against (value-CAS): the keys of the affordance's patch
- * delta select which of the block's *current* attrs are embedded as `expected`,
- * in the delta's own key order.
- */
-function pickTouched(
-  attrs: Readonly<Record<string, unknown>>,
-  delta: Readonly<Record<string, unknown>>,
-): Record<string, unknown> {
-  const expected: Record<string, unknown> = {};
-  for (const key of Object.keys(delta)) {
-    if (Object.hasOwn(attrs, key)) expected[key] = attrs[key];
-  }
-  return expected;
-}
-
-/**
  * Enrich a block hook's hast subtree in place: every element carrying a
  * `data-intent` attribute whose value parses as a JSON object with a known
  * `affordance` name gets the full Intent payload merged in:
@@ -283,7 +268,7 @@ function pickTouched(
  *
  * in exactly that (documented, deterministic) key order. `affordance`/`params`
  * are preserved as the hook wrote them; `expectedVersion` is `docVersion(src)`
- * of the node's source; `expected` is `pickTouched(attrs, patch(attrs, params))`.
+ * of the node's source; `expected` is `intentExpected(type, affordance, attrs, params)`.
  * Unknown affordances, unparseable payloads, and throwing patches leave the
  * attribute unchanged (fail-soft). Pure apart from mutating the freshly-created
  * subtree — no I/O, no shared state.
@@ -312,15 +297,10 @@ function enrichDataIntent(
 
     const { affordance: name, params } = payload as { affordance?: unknown; params?: unknown };
     if (typeof name !== "string") return;
-    const affordance = blockType.affordances?.find((a) => a.name === name);
-    if (affordance === undefined) return; // unknown affordance → leave unchanged
-
-    let delta: Record<string, unknown>;
-    try {
-      delta = affordance.patch(block.attrs, params);
-    } catch {
-      return; // a throwing patch must not fail the projection (fail-soft)
-    }
+    // Unknown affordance, or a throwing patch (which must not fail the
+    // projection) → leave the attribute unchanged (fail-soft).
+    const expected = intentExpected(blockType, name, block.attrs, params);
+    if (expected === undefined) return;
 
     node.properties["data-intent"] = JSON.stringify({
       docId,
@@ -328,7 +308,7 @@ function enrichDataIntent(
       affordance: name,
       params,
       expectedVersion,
-      expected: pickTouched(block.attrs, delta),
+      expected,
     });
   });
 

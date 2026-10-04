@@ -49,7 +49,7 @@ export type { Intent } from "./intent/apply.js";
 // ---------------------------------------------------------------------------
 // Intent
 // ---------------------------------------------------------------------------
-export { applyIntent } from "./intent/apply.js";
+export { applyIntent, intentExpected } from "./intent/apply.js";
 // ---------------------------------------------------------------------------
 // Merge data (custom projectors receive the merged tree)
 // ---------------------------------------------------------------------------

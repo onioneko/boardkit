@@ -32,8 +32,58 @@ export interface Intent {
   readonly params?: unknown;
   /** The document version the projection was rendered against (compare-and-set). */
   readonly expectedVersion?: string;
-  /** The attr values rendered against (value-CAS); when the version moved but these still match, the intent rebases. */
+  /**
+   * The attr values rendered against (value-CAS), as {@link intentExpected}
+   * builds them. They are always compared against the current attrs (strict
+   * value-CAS): a mismatch rejects with `expected-mismatch` even when
+   * `expectedVersion` is current, and when the version moved but they still
+   * match, the intent rebases.
+   */
   readonly expected?: Record<string, unknown>;
+  /**
+   * Set to `false` to skip the `expected` check while `expectedVersion` is
+   * absent or current (the 0.1 behaviour). Absent takes the engine's
+   * `EngineOptions.strictExpected`, which defaults to `true`.
+   */
+  readonly strictExpected?: boolean;
+}
+
+/**
+ * The `expected` payload for an intent: the current values of the attrs the
+ * affordance's patch would change, in the delta's key order. A key the patch
+ * adds that `attrs` does not have yet is left out. This is the payload the
+ * html projector embeds in `data-intent`; another projector or client builds
+ * the same one with it, so strict value-CAS can tell a stale view from a
+ * current one.
+ * @param blockType The block's registered type.
+ * @param affordance The affordance name.
+ * @param attrs The block's attrs as the client saw them.
+ * @param params The intent's params.
+ * @returns The payload, or `undefined` when the type has no such affordance or its patch throws.
+ * @example
+ * ```ts
+ * const expected = intentExpected(checklist, "toggle", block.attrs, { item: "a" });
+ * ```
+ */
+export function intentExpected(
+  blockType: AnyBlockType,
+  affordance: string,
+  attrs: Readonly<Record<string, unknown>>,
+  params: unknown,
+): Record<string, unknown> | undefined {
+  const decl = blockType.affordances?.find((a) => a.name === affordance);
+  if (decl === undefined) return undefined;
+  let delta: Record<string, unknown>;
+  try {
+    delta = decl.patch(attrs, params);
+  } catch {
+    return undefined;
+  }
+  const expected: Record<string, unknown> = {};
+  for (const key of Object.keys(delta)) {
+    if (Object.hasOwn(attrs, key)) expected[key] = attrs[key];
+  }
+  return expected;
 }
 
 function blocksOf(parsed: ParsedDoc): Block[] {
@@ -118,6 +168,7 @@ export async function applyIntent(
     {
       ...(intent.expectedVersion !== undefined ? { expectedVersion: intent.expectedVersion } : {}),
       ...(intent.expected !== undefined ? { expected: intent.expected } : {}),
+      ...(intent.strictExpected !== undefined ? { strictExpected: intent.strictExpected } : {}),
     },
     {
       affordance: intent.affordance,

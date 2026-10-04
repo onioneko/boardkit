@@ -298,6 +298,17 @@ export interface EngineOptions {
    * workspace.
    */
   readonly watch?: boolean | WatchOptions;
+  /**
+   * Strict value-CAS for `patch` and `applyIntent`, on by default. A present
+   * `expected` is then compared against the block's current attrs even when
+   * `expectedVersion` is absent or current, and a mismatch is rejected with
+   * `expected-mismatch`: a client whose version and values come from
+   * different snapshots never overwrites values it did not see. `false`
+   * restores the 0.1 rules, where `expected` is only consulted once the
+   * version has moved. A call's own `strictExpected` (on `patch` options or
+   * the {@link Intent}) overrides this.
+   */
+  readonly strictExpected?: boolean;
 }
 
 /** The result of one projection: output, diagnostics, and committed versions of reachable docs. */
@@ -418,6 +429,8 @@ export interface Engine {
       readonly attrs: Record<string, unknown>;
       readonly expectedVersion?: string;
       readonly expected?: Record<string, unknown>;
+      /** Override {@link EngineOptions.strictExpected} for this call. */
+      readonly strictExpected?: boolean;
     },
   ): Promise<WriteResult>;
   /**
@@ -639,6 +652,7 @@ export function createEngine(opts: EngineOptions): Engine {
   const includeLimits = resolveIncludeLimits(opts.includeLimits);
   const maxDocumentBytes = resolveMaxDocumentBytes(opts.maxDocumentBytes);
   const complexityLimits = resolveComplexityLimits(opts.complexityLimits);
+  const strictExpectedDefault = opts.strictExpected ?? true;
   /** The complexity diagnostic for a stored document, or `undefined` when within the limits or off. */
   const complexityOf = (id: DocId, src: string): Diagnostic | undefined =>
     complexityLimits === false
@@ -1260,7 +1274,7 @@ export function createEngine(opts: EngineOptions): Engine {
           return r;
         });
     },
-    async patch(docId, blockId, { writer, attrs, expectedVersion, expected }) {
+    async patch(docId, blockId, { writer, attrs, expectedVersion, expected, strictExpected }) {
       const vDoc = tryDocId(docId);
       if (!vDoc.ok) return invalidIdRejection(vDoc.diagnostic);
       const vBlock = tryBlockId(blockId);
@@ -1270,6 +1284,7 @@ export function createEngine(opts: EngineOptions): Engine {
           patchDocPipeline(deps, vDoc.id, vBlock.id, attrs, writer, {
             ...(expectedVersion !== undefined ? { expectedVersion } : {}),
             ...(expected !== undefined ? { expected } : {}),
+            strictExpected: strictExpected ?? strictExpectedDefault,
           }),
         )
         .then((r) => {
@@ -1282,7 +1297,13 @@ export function createEngine(opts: EngineOptions): Engine {
     },
     applyIntent(intent, { writer }) {
       return ensureReverseIndex()
-        .then(() => applyIntentRoute(deps, intent, writer))
+        .then(() =>
+          applyIntentRoute(
+            deps,
+            { ...intent, strictExpected: intent.strictExpected ?? strictExpectedDefault },
+            writer,
+          ),
+        )
         .then((r) => {
           if (r.ok) {
             invalidateReverseIndex();

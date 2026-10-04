@@ -153,6 +153,111 @@ describe("decideFunctionPatch (function-delta value-CAS, rule 3')", () => {
   });
 });
 
+describe("strict value-CAS (the default)", () => {
+  const attrs = { value: "pending", note: "x" };
+
+  it("decidePatch: a current version with a stale expected is refused", () => {
+    expect(
+      decidePatch("v1", attrs, { expectedVersion: "v1", expected: { value: "done" } }),
+    ).toEqual({ kind: "reject", reason: "expected-mismatch", current: attrs });
+  });
+
+  it("decidePatch: no expectedVersion with a stale expected is refused", () => {
+    expect(decidePatch("v1", attrs, { expected: { value: "done" } })).toEqual({
+      kind: "reject",
+      reason: "expected-mismatch",
+      current: attrs,
+    });
+  });
+
+  it("decidePatch: a current version with a matching expected applies without rebase", () => {
+    expect(
+      decidePatch("v1", attrs, { expectedVersion: "v1", expected: { value: "pending" } }),
+    ).toEqual({ kind: "apply", rebased: false });
+  });
+
+  it("decidePatch: strictExpected: false keeps the lax rules 1 and 2", () => {
+    const lax = { expected: { value: "done" }, strictExpected: false } as const;
+    expect(decidePatch("v1", attrs, { ...lax, expectedVersion: "v1" })).toEqual({
+      kind: "apply",
+      rebased: false,
+    });
+    expect(decidePatch("v1", attrs, lax)).toEqual({ kind: "apply", rebased: false });
+    // The opt-out never weakens rule 3/4: a stale version still compares `expected`.
+    expect(decidePatch("v2", attrs, { ...lax, expectedVersion: "v1" })).toEqual({
+      kind: "reject",
+      reason: "expected-mismatch",
+      current: attrs,
+    });
+  });
+
+  interface Item {
+    id: string;
+    done: boolean;
+  }
+  const toggle =
+    (itemId: string): PatchDeltaFn =>
+    (a) => ({
+      items: ((a.items as Item[]) ?? []).map((item) =>
+        item.id === itemId ? { ...item, done: !item.done } : item,
+      ),
+    });
+  const current = {
+    items: [
+      { id: "a", done: false },
+      { id: "b", done: true },
+    ],
+  };
+
+  it("decideFunctionPatch: a current version with a stale expected is refused", () => {
+    const delta = toggle("b")(current);
+    const expected = {
+      items: [
+        { id: "a", done: false },
+        { id: "b", done: false },
+      ],
+    };
+    expect(decideFunctionPatch("v1", current, delta, { expectedVersion: "v1", expected })).toEqual({
+      kind: "reject",
+      reason: "expected-mismatch",
+      current,
+    });
+    expect(
+      decideFunctionPatch("v1", current, delta, {
+        expectedVersion: "v1",
+        expected,
+        strictExpected: false,
+      }),
+    ).toEqual({ kind: "apply", rebased: false });
+  });
+
+  it("decideFunctionPatch: a key the delta changes that is missing from expected is a mismatch", () => {
+    const delta = toggle("a")(current);
+    expect(
+      decideFunctionPatch("v1", current, delta, { expectedVersion: "v1", expected: {} }),
+    ).toEqual({ kind: "reject", reason: "expected-mismatch", current });
+  });
+
+  it("decideFunctionPatch: per-element comparison still lets a disjoint element differ", () => {
+    // The client saw "b" stale, but the delta only changes "a": still applies.
+    const delta = toggle("a")(current);
+    const expected = {
+      items: [
+        { id: "a", done: false },
+        { id: "b", done: false },
+      ],
+    };
+    expect(decideFunctionPatch("v1", current, delta, { expectedVersion: "v1", expected })).toEqual({
+      kind: "apply",
+      rebased: false,
+    });
+    expect(decideFunctionPatch("v0", current, delta, { expectedVersion: "v1", expected })).toEqual({
+      kind: "apply",
+      rebased: true,
+    });
+  });
+});
+
 describe("decideFullText (rules 5–6)", () => {
   it("rule 5: stale expectedVersion → reject", () => {
     expect(decideFullText("v2", { expectedVersion: "v1" })).toBe("reject");
