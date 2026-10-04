@@ -257,7 +257,8 @@ export interface EngineOptions {
    * emphasis, and a few thousand levels (a few KB) overflow the call stack.
    * On by default with {@link DEFAULT_COMPLEXITY_LIMITS} (32 container markers
    * on a line, 160 columns of prefix indentation, `[` nesting 32 deep in a
-   * paragraph, delimiter runs of 64, emphasis nesting 64 deep in a paragraph);
+   * paragraph, delimiter runs of 64, emphasis nesting 256 deep in a paragraph;
+   * fenced code is not counted for the last three);
    * an object overrides the fields it sets,
    * and `false` turns the check off. A document over any limit is treated
    * like one over {@link EngineOptions.maxDocumentBytes}, with an

@@ -9,7 +9,9 @@ Parsing is now fail-soft, and a new complexity guard, on by default, refuses the
   - at most 160 columns of prefix indentation;
   - `[` nesting at most 32 deep in a paragraph;
   - runs of at most 64 `*`, `_` or `~` (a thematic break or fence line is not counted);
-  - emphasis nesting at most 64 deep in a paragraph.
+  - emphasis nesting at most 256 deep in a paragraph, estimated as an upper bound (code spans are counted, so a long table or list of globs such as `` `src/**/*.ts` `` can be refused).
+
+  Fenced code that the scan can follow exactly is not counted for brackets, delimiter runs or emphasis.
 
   A linear scan runs before every parse. Documents over a limit that were accepted before are now refused. A write, patch or intent is rejected. A stored document is treated like one over `maxDocumentBytes`: its projection is `ok: false`, an include of it stays verbatim, `getBlock` returns `undefined`, and an external write of it is not evented. The diagnostic is `E_DOCUMENT_TOO_COMPLEX`. To accept such documents, raise the field that refuses them, or pass `complexityLimits: false` to turn the scan off.
 
