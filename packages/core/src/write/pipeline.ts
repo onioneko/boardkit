@@ -4,6 +4,7 @@ import type { AnyBlockType } from "../blocks/types.js";
 import { diffDocs } from "../diff/diff.js";
 import { synthesizeEvents } from "../diff/synthesize.js";
 import { docVersion } from "../engine/version.js";
+import { includeShape } from "../link/graph.js";
 import {
   compose,
   type WriteCtx,
@@ -20,7 +21,7 @@ import { parseDoc, parseFailedDiagnostic } from "../parse/pipeline.js";
 import {
   DEFAULT_MAX_DOCUMENT_BYTES,
   documentSizeDiagnostic,
-  exceedsDocumentLimit,
+  sizeOverLimit,
 } from "../parse/size.js";
 import type { Clock, CommitInfo, EventDraft, EventRecord, Storage } from "../ports/ports.js";
 import { enforceHistory } from "../validate/history.js";
@@ -171,6 +172,44 @@ export interface PipelineDeps {
    * not reproducible; pass a minter for deterministic ids.
    */
   readonly commitId?: (docId: DocId, version: string) => string;
+  /**
+   * An existing parse of a stored document's source, or `undefined`. The
+   * engine passes its parse cache here, so a write reuses the parse of the
+   * content it replaces. A parse it returns is used without the size and
+   * complexity checks, so it must only return parses of content that passed
+   * them.
+   */
+  readonly cachedParse?: (docId: DocId, src: string) => ParsedDoc | undefined;
+  /**
+   * Called once per commit, right after the bytes land and before any event
+   * is appended, with what the commit did. The engine seeds its parse cache
+   * from it and updates its include index. It must not throw.
+   */
+  readonly onCommit?: (commit: CommitEffect) => void;
+}
+
+/** What one commit did to a document, as {@link PipelineDeps.onCommit} sees it. */
+export interface CommitEffect {
+  /** The committed document. */
+  readonly docId: DocId;
+  /** The stored source after the commit; `undefined` after a removal. */
+  readonly src: string | undefined;
+  /** The content hash of `src`; `undefined` after a removal. */
+  readonly version: string | undefined;
+  /** The pipeline's parse of `src`, when it made one. */
+  readonly parsed?: ParsedDoc;
+  /**
+   * False only when the commit provably kept the document's include
+   * references and section ids (see `includeShape`), so no include graph can
+   * have changed. True whenever that is not known.
+   */
+  readonly shapeChanged: boolean;
+}
+
+/** Whether a commit may have changed a document's include shape (true unless both parses agree). */
+function shapeChanged(before: ParsedDoc | undefined, after: ParsedDoc | undefined): boolean {
+  if (before === undefined || after === undefined) return true;
+  return includeShape(before) !== includeShape(after);
 }
 
 /**
@@ -263,6 +302,47 @@ export function tryParseDoc(
   }
 }
 
+/**
+ * A stored document's parse: the cached one when there is one, otherwise
+ * checked against the size and complexity limits and parsed.
+ * @param deps The pipeline dependencies.
+ * @param docId The document.
+ * @param src Its stored source.
+ * @returns The parse, or the rejection that kept it from being parsed
+ *   (`too-large`, `too-complex`, or `validation` for a parse that threw).
+ */
+export function parseStored(
+  deps: PipelineDeps,
+  docId: DocId,
+  src: string,
+):
+  | { readonly ok: true; readonly parsed: ParsedDoc }
+  | { readonly ok: false; readonly rejection: WriteResult } {
+  const cached = deps.cachedParse?.(docId, src);
+  if (cached !== undefined) return { ok: true, parsed: cached };
+  const overLimit = parseLimitRejection(deps, docId, src, "read");
+  if (overLimit !== undefined) return { ok: false, rejection: overLimit };
+  const attempt = tryParseDoc(src, deps.parseOptions, docId);
+  if (!attempt.ok) return { ok: false, rejection: rejection("validation", [attempt.diagnostic]) };
+  return { ok: true, parsed: attempt.parsed };
+}
+
+/**
+ * A `too-large` rejection for a stored document whose `Storage.size` is over
+ * the limit, found before reading it; `undefined` when it must be read to tell.
+ * @param deps The pipeline dependencies.
+ * @param docId The document.
+ * @returns The rejection, or `undefined`.
+ */
+export async function storedSizeRejection(
+  deps: Pick<PipelineDeps, "storage" | "maxDocumentBytes">,
+  docId: DocId,
+): Promise<WriteResult | undefined> {
+  const max = deps.maxDocumentBytes ?? DEFAULT_MAX_DOCUMENT_BYTES;
+  const d = await sizeOverLimit(deps.storage, docId, max);
+  return d === undefined ? undefined : rejection("too-large", [d]);
+}
+
 function rejection(
   reason: string,
   diagnostics: readonly Diagnostic[],
@@ -303,7 +383,9 @@ function validateAndTruncate(
   deps: PipelineDeps,
   docId: DocId,
   src: string,
-): { ok: true; src: string } | { ok: false; diagnostics: readonly Diagnostic[] } {
+):
+  | { ok: true; src: string; parsed?: ParsedDoc }
+  | { ok: false; diagnostics: readonly Diagnostic[] } {
   const attempt = tryParseDoc(src, deps.parseOptions, docId);
   if (!attempt.ok) return { ok: false, diagnostics: [attempt.diagnostic] };
   const parsed = attempt.parsed;
@@ -340,14 +422,46 @@ function validateAndTruncate(
     if (patchDiags.length > 0) return { ok: false, diagnostics: patchDiags };
     current = next;
   }
-  return { ok: true, src: current };
+  // The parse describes the result only when truncation left it unchanged.
+  return current === src ? { ok: true, src: current, parsed } : { ok: true, src: current };
 }
 
-function diffAndEmitDrafts(
+/**
+ * The parse of content a write is about to store: the validation parse when
+ * truncation left the content unchanged, otherwise a parse of the result.
+ * `undefined` when that parse throws (the commit then records a reset).
+ */
+function parseWritten(
   deps: PipelineDeps,
   docId: DocId,
-  before: string,
-  after: string,
+  validated: { readonly src: string; readonly parsed?: ParsedDoc },
+): ParsedDoc | undefined {
+  if (validated.parsed !== undefined) return validated.parsed;
+  const attempt = tryParseDoc(validated.src, deps.parseOptions, docId);
+  return attempt.ok ? attempt.parsed : undefined;
+}
+
+/**
+ * The stored content's parse for diffing, or `undefined` when it cannot be
+ * had (over a limit, or its parse throws): the commit then records a reset.
+ */
+function parseBefore(deps: PipelineDeps, docId: DocId, src: string): ParsedDoc | undefined {
+  const stored = parseStored(deps, docId, src);
+  return stored.ok ? stored.parsed : undefined;
+}
+
+/**
+ * DIFF: the events of a commit from the parse of the content it replaced to
+ * the parse of the content it stored.
+ * @param before The replaced content's parse; `undefined` when it could not be
+ *   parsed (over the size or a complexity limit, or a parse that threw).
+ * @param after The stored content's parse; `undefined` when its parse threw.
+ */
+function draftsFor(
+  deps: PipelineDeps,
+  docId: DocId,
+  before: ParsedDoc | undefined,
+  after: ParsedDoc | undefined,
   writer: Writer,
 ): EventDraft[] {
   // A stored document over the size limit or a complexity limit is never
@@ -356,35 +470,20 @@ function diffAndEmitDrafts(
   // then `doc.created`, followed by the new content diffed from an empty
   // document. A consumer replaying the log drops the old state on
   // `doc.removed` and so ends with exactly the new document.
-  const max = deps.maxDocumentBytes ?? DEFAULT_MAX_DOCUMENT_BYTES;
-  const beforeAttempt =
-    exceedsDocumentLimit(before, max) ||
-    complexityDiagnostic(docId, before, deps.complexityLimits, "read") !== undefined
-      ? undefined
-      : tryParseDoc(before, deps.parseOptions, docId);
-  const reset = beforeAttempt === undefined || !beforeAttempt.ok;
-  const beforeParsed = reset ? parseDoc("", deps.parseOptions) : beforeAttempt.parsed;
-  // The new content was parsed (or checked) before it was stored. Should its
-  // parse throw here anyway, the commit has landed: record the reset alone.
-  const afterAttempt = tryParseDoc(after, deps.parseOptions, docId);
-  if (!afterAttempt.ok) {
-    return [
-      { t: deps.clock(), type: "doc.removed", docId, by: writer },
-      { t: deps.clock(), type: "doc.created", docId, by: writer },
-    ];
-  }
-  const diff = diffDocs(beforeParsed, afterAttempt.parsed);
+  const reset = [
+    { t: deps.clock(), type: "doc.removed", docId, by: writer },
+    { t: deps.clock(), type: "doc.created", docId, by: writer },
+  ];
+  // The new content was checked before it was stored. Should its parse throw
+  // anyway, the commit has landed: record the reset alone.
+  if (after === undefined) return reset;
+  const diff = diffDocs(before ?? parseDoc("", deps.parseOptions), after);
   const drafts = synthesizeEvents(diff, docId, {
     clock: deps.clock,
     blockTypes: deps.blockTypes,
     writer,
   });
-  if (!reset) return drafts;
-  return [
-    { t: deps.clock(), type: "doc.removed", docId, by: writer },
-    { t: deps.clock(), type: "doc.created", docId, by: writer },
-    ...drafts,
-  ];
+  return before === undefined ? [...reset, ...drafts] : drafts;
 }
 
 async function withLock<T>(deps: PipelineDeps, docId: DocId, fn: () => Promise<T>): Promise<T> {
@@ -454,11 +553,22 @@ export async function writeDoc(
       if (overLimit !== undefined) return overLimit;
       const validated = validateAndTruncate(deps, docId, text);
       if (!validated.ok) return rejection("validation", validated.diagnostics);
-      const grown = parseLimitRejection(deps, docId, validated.src, "write");
-      if (grown !== undefined) return grown;
+      if (validated.src !== text) {
+        const grown = parseLimitRejection(deps, docId, validated.src, "write");
+        if (grown !== undefined) return grown;
+      }
+      const after = parseWritten(deps, docId, validated);
+      const before = parseBefore(deps, docId, current);
       await deps.storage.writeAtomic(docId, validated.src);
-      const drafts = diffAndEmitDrafts(deps, docId, current, validated.src, writer);
       const version = docVersion(validated.src);
+      deps.onCommit?.({
+        docId,
+        src: validated.src,
+        version,
+        ...(after !== undefined ? { parsed: after } : {}),
+        shapeChanged: shapeChanged(before, after),
+      });
+      const drafts = draftsFor(deps, docId, before, after, writer);
       const { records, appended } = await emit(deps, docId, version, drafts);
       return {
         ok: true,
@@ -534,18 +644,22 @@ export async function patchDoc(
         affordance?: string;
         params?: unknown;
       };
+      const storedTooLarge = await storedSizeRejection(deps, docId);
+      if (storedTooLarge !== undefined) return storedTooLarge;
       const current = await deps.storage.read(docId);
       if (current === undefined) {
         return rejection("missing-doc", [
           diagnostic("E_DOC_MISSING", `document not found: ${docId}`),
         ]);
       }
-      const storedOverLimit = parseLimitRejection(deps, docId, current, "read");
-      if (storedOverLimit !== undefined) return storedOverLimit;
-      const currentAttempt = tryParseDoc(current, deps.parseOptions, docId);
-      if (!currentAttempt.ok) return rejection("validation", [currentAttempt.diagnostic]);
-      const currentParsed = currentAttempt.parsed;
-      const block = blocksOf(currentParsed).find((b) => b.blockId === proposed.blockId);
+      const stored = parseStored(deps, docId, current);
+      if (!stored.ok) return stored.rejection;
+      const currentParsed = stored.parsed;
+      const found = blocksOf(currentParsed).find((b) => b.blockId === proposed.blockId);
+      // The parse may be the engine's cached one, shared with every reader and
+      // frozen: the hooks and the delta below get a private copy of the attrs.
+      const block =
+        found === undefined ? undefined : { ...found, attrs: structuredClone(found.attrs) };
       if (block === undefined) {
         return rejection("missing-block", [
           diagnostic("E_BLOCK_MISSING", `block not found: ${proposed.blockId}`, {
@@ -624,10 +738,19 @@ export async function patchDoc(
       if (patchDiags.length > 0) return rejection("patch", patchDiags);
       const overLimit = parseLimitRejection(deps, docId, src, "write");
       if (overLimit !== undefined) return overLimit;
+      const afterAttempt = tryParseDoc(src, deps.parseOptions, docId);
+      const after = afterAttempt.ok ? afterAttempt.parsed : undefined;
 
       await deps.storage.writeAtomic(docId, src);
-      const drafts = diffAndEmitDrafts(deps, docId, current, src, writer);
       const version = docVersion(src);
+      deps.onCommit?.({
+        docId,
+        src,
+        version,
+        ...(after !== undefined ? { parsed: after } : {}),
+        shapeChanged: shapeChanged(currentParsed, after),
+      });
+      const drafts = draftsFor(deps, docId, currentParsed, after, writer);
       const { records, appended } = await emit(deps, docId, version, drafts);
       return {
         ok: true,
@@ -676,10 +799,20 @@ export async function createDoc(
       if (overLimit !== undefined) return overLimit;
       const validated = validateAndTruncate(deps, docId, proposed.content);
       if (!validated.ok) return rejection("validation", validated.diagnostics);
-      const grown = parseLimitRejection(deps, docId, validated.src, "write");
-      if (grown !== undefined) return grown;
+      if (validated.src !== proposed.content) {
+        const grown = parseLimitRejection(deps, docId, validated.src, "write");
+        if (grown !== undefined) return grown;
+      }
+      const after = parseWritten(deps, docId, validated);
       await deps.storage.writeAtomic(docId, validated.src);
       const version = docVersion(validated.src);
+      deps.onCommit?.({
+        docId,
+        src: validated.src,
+        version,
+        ...(after !== undefined ? { parsed: after } : {}),
+        shapeChanged: true,
+      });
       const { records, appended } = await emit(deps, docId, version, [
         { t: deps.clock(), type: "doc.created", docId, by: writer },
       ]);
@@ -761,6 +894,8 @@ export async function importDoc(
       }
       await deps.storage.writeAtomic(docId, content);
       const version = docVersion(content);
+      // Not parsed: an import stores bytes the limits may refuse to parse.
+      deps.onCommit?.({ docId, src: content, version, shapeChanged: true });
       const { records, appended } = await emit(deps, docId, version, [
         { t: deps.clock(), type: "doc.created", docId, by: writer, imported: true },
       ]);
@@ -805,6 +940,7 @@ export async function removeDoc(
         ]);
       }
       await deps.storage.delete(docId);
+      deps.onCommit?.({ docId, src: undefined, version: undefined, shapeChanged: true });
       // `version` is the removed content's hash: the last committed state.
       const version = docVersion(existing);
       const { records, appended } = await emit(deps, docId, version, [

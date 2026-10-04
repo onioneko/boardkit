@@ -37,6 +37,7 @@ import {
   documentSizeDiagnostic,
   exceedsDocumentLimit,
   resolveMaxDocumentBytes,
+  sizeOverLimit,
 } from "../parse/size.js";
 import type {
   Clock,
@@ -53,6 +54,7 @@ import { createChokidarSource } from "../watch/chokidar.js";
 import { createExternalWriteHandler, type ExternalWriteOutcome } from "../watch/external-write.js";
 import type { WatchSource } from "../watch/source.js";
 import {
+  type CommitEffect,
   createDoc as createDocPipeline,
   importDoc as importDocPipeline,
   type PipelineDeps,
@@ -720,26 +722,98 @@ export function createEngine(opts: EngineOptions): Engine {
   // to find every subscribed document whose projection inputs contain that
   // docId — the set {S} ∪ (docs transitively included by S).
   //
-  // Maintenance (chosen mechanism — "rebuilt after EMIT"): the index is
-  // invalidated when a subscriber is added and after every successful write
-  // that emits events, then rebuilt lazily at the start of the next write's
-  // commit pipeline, before that write emits anything. Delivery is therefore
-  // synchronous and always reads an index consistent with pre-write storage:
-  // a new include edge written by write N is visible to deliveries of write
-  // N+1, and a doc.removed event is delivered against the pre-removal graph.
-  // Inputs come only from the include graph (link/graph.ts): nothing else is
-  // consulted.
+  // Maintenance is incremental. Each subscribed document's last resolution
+  // is kept (`subscriberLinks`): its `ok` edges and every document the pass
+  // read (the board and every include target, resolved or not). Only those
+  // documents can change its edges, so a commit to document X marks dirty
+  // just the subscribers whose pass read X (`readersByDoc`), and only when
+  // the commit may have changed X's include shape (its include references,
+  // its section ids, or whether it exists and parses at all): a write that
+  // keeps the shape marks nothing. A new subscriber is dirty. Dirty
+  // subscribers are re-resolved lazily at the start of the next write's
+  // commit pipeline, before that write emits anything, and the index is
+  // rebuilt in memory from every subscriber's kept edges. Delivery is
+  // therefore synchronous and always reads an index consistent with
+  // pre-write storage: a new include edge written by write N is visible to
+  // deliveries of write N+1, and a doc.removed event is delivered against the
+  // pre-removal graph. Inputs come only from the include graph
+  // (link/graph.ts): nothing else is consulted. The index sees the commits
+  // the engine makes and the external writes it handles; a document changed
+  // in storage behind the engine's back is seen once it is next committed or
+  // reported to `externalWrite`.
   let reverseIndex: ReadonlyMap<DocId, ReadonlySet<DocId>> = new Map();
   let reverseIndexGeneration = 0;
   let reverseIndexBuiltGeneration = -1;
   let reverseIndexBuild: Promise<void> | undefined;
+  /** Each resolved subscriber's `ok` edges and the documents its pass read. */
+  const subscriberLinks = new Map<
+    DocId,
+    { readonly edges: readonly ResolvedInclude[]; readonly reads: ReadonlySet<DocId> }
+  >();
+  /** Document → the subscribers whose last pass read it. */
+  const readersByDoc = new Map<DocId, Set<DocId>>();
+  /** Subscribers to re-resolve on the next rebuild. */
+  const dirtySubscribers = new Set<DocId>();
+  /** Subscribers whose last resolution threw: retried at the next write. */
+  const retrySubscribers = new Set<DocId>();
+  /** Documents whose shape changed since the running rebuild started. */
+  const changedDuringBuild = new Set<DocId>();
 
   function invalidateReverseIndex(): void {
     reverseIndexGeneration += 1;
   }
 
-  /** Rebuild the reverse include index if it is stale (generation-guarded against concurrent writes). */
+  /** Mark `subscriber` for re-resolution. */
+  function markDirty(subscriber: DocId): void {
+    dirtySubscribers.add(subscriber);
+    invalidateReverseIndex();
+  }
+
+  /** A commit may have changed `docId`'s include shape: re-resolve every subscriber that read it. */
+  function includeShapeChanged(docId: DocId): void {
+    if (reverseIndexBuild !== undefined) changedDuringBuild.add(docId);
+    for (const subscriber of readersByDoc.get(docId) ?? []) markDirty(subscriber);
+  }
+
+  /** Re-resolve every subscriber (a change that can move any include edge). */
+  function markAllDirty(): void {
+    for (const subscriber of scopedSubscribers.keys()) dirtySubscribers.add(subscriber);
+    invalidateReverseIndex();
+  }
+
+  /** Replace (or, with `undefined`, drop) a subscriber's kept resolution. */
+  function setSubscriberLink(
+    subscriber: DocId,
+    link:
+      | { readonly edges: readonly ResolvedInclude[]; readonly reads: ReadonlySet<DocId> }
+      | undefined,
+  ): void {
+    for (const doc of subscriberLinks.get(subscriber)?.reads ?? []) {
+      const readers = readersByDoc.get(doc);
+      readers?.delete(subscriber);
+      if (readers?.size === 0) readersByDoc.delete(doc);
+    }
+    if (link === undefined) {
+      subscriberLinks.delete(subscriber);
+      return;
+    }
+    subscriberLinks.set(subscriber, link);
+    for (const doc of link.reads) {
+      let readers = readersByDoc.get(doc);
+      if (readers === undefined) {
+        readers = new Set();
+        readersByDoc.set(doc, readers);
+      }
+      readers.add(subscriber);
+    }
+  }
+
+  /** Bring the reverse include index up to date (generation-guarded against concurrent writes). */
   async function ensureReverseIndex(): Promise<void> {
+    if (retrySubscribers.size > 0) {
+      for (const subscriber of retrySubscribers) markDirty(subscriber);
+      retrySubscribers.clear();
+    }
     while (reverseIndexBuiltGeneration < reverseIndexGeneration) {
       const target = reverseIndexGeneration;
       if (reverseIndexBuild === undefined) {
@@ -752,19 +826,37 @@ export function createEngine(opts: EngineOptions): Engine {
   }
 
   async function buildReverseIndexNow(target: number): Promise<void> {
-    const subscribed = [...scopedSubscribers.keys()];
-    const edges: ResolvedInclude[] = [];
-    for (const docId of subscribed) {
+    const todo = [...dirtySubscribers];
+    dirtySubscribers.clear();
+    changedDuringBuild.clear();
+    for (const docId of todo) {
+      if (!scopedSubscribers.has(docId)) continue;
+      let link: { edges: ResolvedInclude[]; reads: Set<DocId> };
       // One subscriber whose board cannot be read contributes no edges; it
       // must never fail the write that triggered the rebuild (or any other).
       try {
-        const link = await resolveIncludes(docId, opts.storage, parseOptions, linkOptions);
-        for (const e of link.includes) edges.push(e);
+        const resolved = await resolveIncludes(docId, opts.storage, parseOptions, linkOptions);
+        const reads = new Set<DocId>([docId]);
+        for (const e of resolved.includes) reads.add(e.toDoc);
+        link = { edges: resolved.includes.filter((e) => e.status === "ok"), reads };
       } catch {
         // Fail-soft: the board's own projection reports the error when read.
+        link = { edges: [], reads: new Set([docId]) };
+        retrySubscribers.add(docId);
+      }
+      // Unsubscribed while resolving: nothing to keep.
+      if (!scopedSubscribers.has(docId)) continue;
+      setSubscriberLink(docId, link);
+      // A commit that landed while this pass was reading may have been missed
+      // by it (and, before this point, could not mark it): resolve it again.
+      for (const changed of changedDuringBuild) {
+        if (link.reads.has(changed)) {
+          markDirty(docId);
+          break;
+        }
       }
     }
-    reverseIndex = buildReverseIndex(edges);
+    reverseIndex = buildReverseIndex([...subscriberLinks.values()].flatMap((l) => l.edges));
     reverseIndexBuiltGeneration = target;
   }
 
@@ -854,6 +946,12 @@ export function createEngine(opts: EngineOptions): Engine {
       recordCommitted(docId, content);
     },
     list: () => opts.storage.list(),
+    ...(opts.storage.size !== undefined
+      ? {
+          size: (docId: DocId) =>
+            (opts.storage.size as (d: DocId) => Promise<number | undefined>)(docId),
+        }
+      : {}),
     ...(opts.storage.rootDir !== undefined ? { rootDir: opts.storage.rootDir } : {}),
     ...(opts.storage.delete !== undefined
       ? { delete: (docId: DocId) => (opts.storage.delete as (d: DocId) => Promise<void>)(docId) }
@@ -891,6 +989,8 @@ export function createEngine(opts: EngineOptions): Engine {
     middleware: writeMiddlewares,
     maxDocumentBytes,
     complexityLimits,
+    cachedParse,
+    onCommit,
   };
 
   // ── Engine-internal caches ────────────────────────────────
@@ -924,8 +1024,48 @@ export function createEngine(opts: EngineOptions): Engine {
     return doc;
   }
 
+  /**
+   * The cached parse of `src`, without parsing on a miss. The cache only ever
+   * holds content that passed the size and complexity limits (every caller of
+   * `parseCached` checks them first, and a write seeds only content it
+   * checked), so a hit skips those checks: no complexity scan of content the
+   * engine has already parsed.
+   */
+  function cachedParse(docId: DocId, src: string): ParsedDoc | undefined {
+    const hit = parseCache.peek(src);
+    if (hit === undefined) return undefined;
+    parseHashByDoc.set(docId, hit.hash);
+    return hit.doc;
+  }
+
+  /**
+   * After every commit (engine writes of all kinds), before its events are
+   * appended: seed the parse cache with the write's own parse of what it
+   * stored, so the next read does not parse it again; drop the replaced
+   * content's parse and the merged trees involving the document; and mark
+   * the subscribers whose include closure read it, when its include shape may
+   * have changed.
+   */
+  function onCommit(commit: CommitEffect): void {
+    const { docId, src, version, parsed } = commit;
+    const old = parseHashByDoc.get(docId);
+    if (old !== undefined && old !== version) parseCache.delete(old);
+    if (src !== undefined && version !== undefined && parsed !== undefined) {
+      parseHashByDoc.set(docId, parseCache.seed(src, parsed, version));
+    } else {
+      parseHashByDoc.delete(docId);
+    }
+    invalidateMergeForDoc(docId);
+    if (commit.shapeChanged) includeShapeChanged(docId);
+  }
+
   /** LINK reads documents through the parse cache and the size limit. */
-  const linkOptions = { parse: parseCached, maxDocumentBytes, complexityLimits };
+  const linkOptions = {
+    parse: parseCached,
+    cached: cachedParse,
+    maxDocumentBytes,
+    complexityLimits,
+  };
 
   // Merge cache: board docId + the hash set of every involved document →
   // MergedTree. Keyed by the sorted (docId, content-hash) pairs of all
@@ -989,20 +1129,6 @@ export function createEngine(opts: EngineOptions): Engine {
     }
   }
 
-  /**
-   * Invalidate the affected parse- and merge-cache entries after a successful
-   * write or handled external write: the parse-cache entry for this doc's last
-   * content hash and every merge-cache entry involving the doc.
-   */
-  function invalidateCaches(docId: DocId): void {
-    const hash = parseHashByDoc.get(docId);
-    if (hash !== undefined) {
-      parseCache.delete(hash);
-      parseHashByDoc.delete(docId);
-    }
-    invalidateMergeForDoc(docId);
-  }
-
   // External-write handling is wired through wrappedStorage so
   // synthesized events reach subscribers via the decorated sink.
   const externalHandler =
@@ -1017,6 +1143,8 @@ export function createEngine(opts: EngineOptions): Engine {
           commitId,
           maxDocumentBytes,
           complexityLimits,
+          cachedParse,
+          parse: parseCached,
           ...(watchOptions.externalWriterId !== undefined
             ? { externalWriterId: watchOptions.externalWriterId }
             : {}),
@@ -1026,11 +1154,19 @@ export function createEngine(opts: EngineOptions): Engine {
     if (externalHandler === undefined) return undefined; // fail-soft: no watch configured
     await ensureReverseIndex();
     const outcome = await externalHandler.handle(watchPath);
-    invalidateReverseIndex();
-    // A handled external write invalidates the affected caches. A
-    // suppressed self-echo (external: false) left content unchanged, so only a
-    // genuine external write (changed content) needs to drop entries.
-    if (outcome?.external) invalidateCaches(outcome.docId);
+    if (outcome === undefined) {
+      // Not a document the handler events: a path outside the workspace, or
+      // a document deleted outside the engine. Which document is not known,
+      // so every subscriber is resolved again.
+      markAllDirty();
+    } else if (outcome.external) {
+      // A genuine external write: its parse (when it fit the limits) is
+      // already cached by content, through `parseCached`. Its shape is not
+      // known to be unchanged, so its readers are resolved again. A
+      // suppressed self-echo left content unchanged and needs nothing.
+      invalidateMergeForDoc(outcome.docId);
+      includeShapeChanged(outcome.docId);
+    }
     return outcome;
   }
 
@@ -1099,15 +1235,21 @@ export function createEngine(opts: EngineOptions): Engine {
     if (set === undefined) {
       set = new Set();
       scopedSubscribers.set(docId, set);
+      // A new subscriber's include edges are not yet in the reverse index.
+      markDirty(docId);
     }
     set.add(handler);
-    // A new subscriber's include edges are not yet in the reverse index.
-    invalidateReverseIndex();
     return () => {
       const handlers = scopedSubscribers.get(docId);
       if (handlers === undefined) return;
       handlers.delete(handler);
-      if (handlers.size === 0) scopedSubscribers.delete(docId);
+      if (handlers.size > 0) return;
+      scopedSubscribers.delete(docId);
+      // Its edges leave the index at the next rebuild (no storage read).
+      setSubscriberLink(docId, undefined);
+      dirtySubscribers.delete(docId);
+      retrySubscribers.delete(docId);
+      invalidateReverseIndex();
     };
   }
 
@@ -1131,6 +1273,11 @@ export function createEngine(opts: EngineOptions): Engine {
         };
       }
       const id = validated.id;
+      // A document whose stored size is over the limit is not even read.
+      const sizedOut = await sizeOverLimit(opts.storage, id, maxDocumentBytes);
+      if (sizedOut !== undefined) {
+        return { ok: false, output: emptyOutput, diagnostics: [sizedOut], versions: {} };
+      }
       const stored = await opts.storage.read(id);
       if (stored === undefined) {
         return {
@@ -1318,103 +1465,55 @@ export function createEngine(opts: EngineOptions): Engine {
       const validated = tryDocId(docId);
       if (!validated.ok) return invalidIdRejection(validated.diagnostic);
       const id = validated.id;
-      return ensureReverseIndex()
-        .then(() =>
-          writeDocPipeline(deps, id, writer, fullText, {
-            ...(expectedVersion !== undefined ? { expectedVersion } : {}),
-          }),
-        )
-        .then((r) => {
-          if (r.ok) {
-            invalidateReverseIndex();
-            invalidateCaches(id);
-          }
-          return r;
-        });
+      return ensureReverseIndex().then(() =>
+        writeDocPipeline(deps, id, writer, fullText, {
+          ...(expectedVersion !== undefined ? { expectedVersion } : {}),
+        }),
+      );
     },
     async patch(docId, blockId, { writer, attrs, expectedVersion, expected, strictExpected }) {
       const vDoc = tryDocId(docId);
       if (!vDoc.ok) return invalidIdRejection(vDoc.diagnostic);
       const vBlock = tryBlockId(blockId);
       if (!vBlock.ok) return invalidIdRejection(vBlock.diagnostic);
-      return ensureReverseIndex()
-        .then(() =>
-          patchDocPipeline(deps, vDoc.id, vBlock.id, attrs, writer, {
-            ...(expectedVersion !== undefined ? { expectedVersion } : {}),
-            ...(expected !== undefined ? { expected } : {}),
-            strictExpected: strictExpected ?? strictExpectedDefault,
-          }),
-        )
-        .then((r) => {
-          if (r.ok) {
-            invalidateReverseIndex();
-            invalidateCaches(vDoc.id);
-          }
-          return r;
-        });
+      return ensureReverseIndex().then(() =>
+        patchDocPipeline(deps, vDoc.id, vBlock.id, attrs, writer, {
+          ...(expectedVersion !== undefined ? { expectedVersion } : {}),
+          ...(expected !== undefined ? { expected } : {}),
+          strictExpected: strictExpected ?? strictExpectedDefault,
+        }),
+      );
     },
     applyIntent(intent, { writer }) {
-      return ensureReverseIndex()
-        .then(() =>
-          applyIntentRoute(
-            deps,
-            { ...intent, strictExpected: intent.strictExpected ?? strictExpectedDefault },
-            writer,
-          ),
-        )
-        .then((r) => {
-          if (r.ok) {
-            invalidateReverseIndex();
-            invalidateCaches(asDocId(intent.docId));
-          }
-          return r;
-        });
+      return ensureReverseIndex().then(() =>
+        applyIntentRoute(
+          deps,
+          { ...intent, strictExpected: intent.strictExpected ?? strictExpectedDefault },
+          writer,
+        ),
+      );
     },
     async createDoc(docId, { writer, content }) {
       const validated = tryDocId(docId);
       if (!validated.ok) return invalidIdRejection(validated.diagnostic);
       const id = validated.id;
-      return ensureReverseIndex()
-        .then(() => createDocPipeline(deps, id, writer, content))
-        .then((r) => {
-          if (r.ok) {
-            invalidateReverseIndex();
-            invalidateCaches(id);
-          }
-          return r;
-        });
+      return ensureReverseIndex().then(() => createDocPipeline(deps, id, writer, content));
     },
     async importDoc(docId, { writer, content, ignoreSizeLimit }) {
       const validated = tryDocId(docId);
       if (!validated.ok) return invalidIdRejection(validated.diagnostic);
       const id = validated.id;
-      return ensureReverseIndex()
-        .then(() =>
-          importDocPipeline(deps, id, writer, content, {
-            ...(ignoreSizeLimit !== undefined ? { ignoreSizeLimit } : {}),
-          }),
-        )
-        .then((r) => {
-          if (r.ok) {
-            invalidateReverseIndex();
-            invalidateCaches(id);
-          }
-          return r;
-        });
+      return ensureReverseIndex().then(() =>
+        importDocPipeline(deps, id, writer, content, {
+          ...(ignoreSizeLimit !== undefined ? { ignoreSizeLimit } : {}),
+        }),
+      );
     },
     async removeDoc(docId, { writer }) {
       const validated = tryDocId(docId);
       if (!validated.ok) return invalidIdRejection(validated.diagnostic);
       const id = validated.id;
-      return ensureReverseIndex()
-        .then(() => removeDocPipeline(deps, id, writer))
-        .then((r) => {
-          if (r.ok) {
-            invalidateReverseIndex();
-            invalidateCaches(id);
-          }
-          return r;
-        });
+      return ensureReverseIndex().then(() => removeDocPipeline(deps, id, writer));
     },
 
     async getDoc(docId) {
@@ -1430,15 +1529,20 @@ export function createEngine(opts: EngineOptions): Engine {
       if (!vDoc.ok) return undefined;
       const vBlock = tryBlockId(blockId);
       if (!vBlock.ok) return undefined;
+      if ((await sizeOverLimit(opts.storage, vDoc.id, maxDocumentBytes)) !== undefined) {
+        return undefined;
+      }
       const src = await opts.storage.read(vDoc.id);
       if (src === undefined) return undefined;
-      if (exceedsDocumentLimit(src, maxDocumentBytes)) return undefined;
-      if (complexityOf(vDoc.id, src) !== undefined) return undefined;
-      let parsed: ParsedDoc;
-      try {
-        parsed = parseCached(vDoc.id, src);
-      } catch {
-        return undefined; // fail-soft: an unparseable document has no blocks
+      let parsed = cachedParse(vDoc.id, src);
+      if (parsed === undefined) {
+        if (exceedsDocumentLimit(src, maxDocumentBytes)) return undefined;
+        if (complexityOf(vDoc.id, src) !== undefined) return undefined;
+        try {
+          parsed = parseCached(vDoc.id, src);
+        } catch {
+          return undefined; // fail-soft: an unparseable document has no blocks
+        }
       }
       const block = parsed.nodes.find((n): n is Block => "blockId" in n && n.blockId === vBlock.id);
       if (block === undefined) return undefined;
@@ -1495,6 +1599,9 @@ export function createEngine(opts: EngineOptions): Engine {
       parseCache.clear();
       parseHashByDoc.clear();
       for (const key of [...mergeCache.keys()]) evictMergeKey(key);
+      // Fence recognition decides which references are include references,
+      // so any document's include shape may have changed.
+      markAllDirty();
     },
   };
 }

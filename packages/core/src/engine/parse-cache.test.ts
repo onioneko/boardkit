@@ -90,3 +90,44 @@ describe("parse cache: failures", () => {
     expect(calls.length).toBe(PARSE_CACHE_MAX_FAILURES + 11);
   });
 });
+
+describe("parse cache: peek and seed", () => {
+  it("peek returns a cached parse without parsing, and nothing on a miss", () => {
+    let parses = 0;
+    const cache = createParseCache((src) => {
+      parses += 1;
+      return parseDoc(src);
+    });
+    expect(cache.peek("# A\n")).toBeUndefined();
+    const first = cache.parse("# A\n");
+    expect(cache.peek("# A\n")).toEqual(first);
+    expect(parses).toBe(1);
+  });
+
+  it("seed caches a parse made elsewhere, frozen, so parse does not parse again", () => {
+    let parses = 0;
+    const cache = createParseCache((src) => {
+      parses += 1;
+      return parseDoc(src);
+    });
+    const src = "# A\n\n```t\nid: b\nitems: [1]\n```\n";
+    const doc = parseDoc(src, { blockTypes: new Set(["t"]) });
+    const hash = cache.seed(src, doc);
+    expect(hash).toBe(docVersion(src));
+    expect(cache.parse(src).doc).toBe(doc);
+    expect(parses).toBe(0);
+    const block = doc.nodes.find((n) => "blockId" in n);
+    expect(block !== undefined && "attrs" in block && Object.isFrozen(block.attrs)).toBe(true);
+  });
+
+  it("seed replaces a remembered failure for the same content", () => {
+    const cache = createParseCache(() => {
+      throw new RangeError("boom");
+    });
+    expect(() => cache.parse("# A\n")).toThrow("boom");
+    expect(cache.peek("# A\n")).toBeUndefined();
+    const doc = parseDoc("# A\n");
+    cache.seed("# A\n", doc);
+    expect(cache.parse("# A\n").doc).toBe(doc);
+  });
+});

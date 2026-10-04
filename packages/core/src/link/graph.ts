@@ -9,7 +9,11 @@ import {
 } from "../parse/complexity.js";
 import type { ParseOptions } from "../parse/options.js";
 import { parseDoc, parseFailedDiagnostic } from "../parse/pipeline.js";
-import { DEFAULT_MAX_DOCUMENT_BYTES, documentSizeDiagnostic } from "../parse/size.js";
+import {
+  DEFAULT_MAX_DOCUMENT_BYTES,
+  documentSizeDiagnostic,
+  sizeOverLimit,
+} from "../parse/size.js";
 import type { Storage } from "../ports/ports.js";
 
 /** A document loaded into an aggregation graph, together with its parse result and raw source. */
@@ -86,6 +90,12 @@ export interface LinkOptions {
    */
   readonly parse?: (docId: DocId, src: string) => ParsedDoc;
   /**
+   * An existing parse of `src`, or `undefined`. A parse it returns is used
+   * as is, without the size and complexity checks: the engine passes its parse
+   * cache here, which only ever holds content that passed them.
+   */
+  readonly cached?: (docId: DocId, src: string) => ParsedDoc | undefined;
+  /**
    * Documents over this many UTF-8 bytes are not parsed: the board yields an
    * empty result and an include of one is left unexpanded, each with an
    * `E_DOCUMENT_TOO_LARGE` diagnostic. Defaults to `DEFAULT_MAX_DOCUMENT_BYTES` (256 KiB).
@@ -160,8 +170,11 @@ export async function resolveIncludes(
   // One read and one parse per document for the whole pass: a document named
   // by many includes (duplicates, or many sections of it) is fetched and
   // parsed once, and every include sees the same snapshot of it.
+  // A document whose `Storage.size` is over the limit is not read: `tooLarge`
+  // carries its diagnostic in place of the source.
   type ReadResult =
-    | { readonly ok: true; readonly src: string | undefined }
+    | { readonly ok: true; readonly src: string | undefined; readonly tooLarge?: undefined }
+    | { readonly ok: true; readonly src: undefined; readonly tooLarge: Diagnostic }
     | { readonly ok: false; readonly err: unknown };
   const reads = new Map<DocId, ReadResult>();
   const parses = new Map<DocId, ParsedDoc | Diagnostic>();
@@ -171,10 +184,15 @@ export async function resolveIncludes(
     const cached = reads.get(id);
     if (cached !== undefined) return cached;
     let result: ReadResult;
-    try {
-      result = { ok: true, src: await storage.read(id) };
-    } catch (err) {
-      result = { ok: false, err };
+    const tooLarge = await sizeOverLimit(storage, id, maxDocumentBytes);
+    if (tooLarge !== undefined) {
+      result = { ok: true, src: undefined, tooLarge };
+    } else {
+      try {
+        result = { ok: true, src: await storage.read(id) };
+      } catch (err) {
+        result = { ok: false, err };
+      }
     }
     reads.set(id, result);
     return result;
@@ -192,6 +210,20 @@ export async function resolveIncludes(
       parses.set(id, parsed);
     }
     return parsed;
+  }
+
+  /**
+   * The document's parse, or the diagnostic that kept it from being parsed:
+   * over the size or a complexity limit, or a parse that threw. An existing
+   * parse (`link.cached`) skips the checks.
+   */
+  function load(id: DocId, src: string): ParsedDoc | Diagnostic {
+    const known = parses.get(id) ?? link.cached?.(id, src);
+    if (known !== undefined) {
+      parses.set(id, known);
+      return known;
+    }
+    return overLimit(id, src) ?? parsedOf(id, src);
   }
 
   function hasSection(id: DocId, parsed: ParsedDoc, sectionId: SectionId): boolean {
@@ -214,6 +246,11 @@ export async function resolveIncludes(
       visiting.delete(docId);
       return;
     }
+    if (own.tooLarge !== undefined) {
+      diagnostics.push(own.tooLarge);
+      visiting.delete(docId);
+      return;
+    }
     const src = own.src;
     if (src === undefined) {
       if (docId === boardDocId) {
@@ -224,14 +261,7 @@ export async function resolveIncludes(
     }
     // Includes of an oversized, over-complex or unparseable document are
     // diagnosed before they get here; this catches the board itself.
-    const tooLarge = overLimit(docId, src);
-    if (tooLarge !== undefined) {
-      diagnostics.push(tooLarge);
-      visiting.delete(docId);
-      return;
-    }
-
-    const parsed = parsedOf(docId, src);
+    const parsed = load(docId, src);
     if (!("nodes" in parsed)) {
       diagnostics.push(parsed);
       visiting.delete(docId);
@@ -270,6 +300,11 @@ export async function resolveIncludes(
         );
         continue;
       }
+      if (target.tooLarge !== undefined) {
+        includes.push(edge(docId, ref.docId, ref.sectionId, "missing-doc"));
+        diagnostics.push(target.tooLarge);
+        continue;
+      }
       const targetSrc = target.src;
       if (targetSrc === undefined) {
         includes.push(edge(docId, ref.docId, ref.sectionId, "missing-doc"));
@@ -283,13 +318,7 @@ export async function resolveIncludes(
 
       // Too large or too complex to parse, or its parse threw: the include
       // stays verbatim, like a missing document.
-      const targetTooLarge = overLimit(ref.docId, targetSrc);
-      if (targetTooLarge !== undefined) {
-        includes.push(edge(docId, ref.docId, ref.sectionId, "missing-doc"));
-        diagnostics.push(targetTooLarge);
-        continue;
-      }
-      const targetParsed = parsedOf(ref.docId, targetSrc);
+      const targetParsed = load(ref.docId, targetSrc);
       if (!("nodes" in targetParsed)) {
         includes.push(edge(docId, ref.docId, ref.sectionId, "missing-doc"));
         diagnostics.push(targetParsed);
@@ -361,4 +390,20 @@ export function buildReverseIndex(
     set.add(edge.fromDoc);
   }
   return new Map([...index.entries()].map(([docId, set]) => [docId, set as ReadonlySet<DocId>]));
+}
+
+/**
+ * What {@link resolveIncludes} reads from a parsed document, as a comparable
+ * string: its include references in order and its section ids. Two parses
+ * with the same shape resolve to the same include edges, so a write that keeps
+ * a document's shape cannot change any include graph it is part of.
+ * @param parsed The parsed document.
+ * @returns The shape.
+ */
+export function includeShape(parsed: ParsedDoc): string {
+  const refs: string[] = [];
+  for (const ref of parsed.refs) {
+    if (ref.kind === "include") refs.push(`${ref.docId}#${ref.sectionId ?? ""}`);
+  }
+  return JSON.stringify([refs, sectionsOf(parsed).map((s) => s.sectionId)]);
 }

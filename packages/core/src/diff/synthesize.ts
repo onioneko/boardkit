@@ -70,9 +70,12 @@ export function synthesizeEvents(
   for (const change of diff.sectionChanges) {
     events.push({ t, type: "section.changed", docId, ...nodeRef(change.section), ...by });
   }
+  // Values are copied out of the parses: a parse may be the engine's cached
+  // one, shared with every reader and frozen, and an event belongs to whoever
+  // receives it.
   for (const { block, changes } of diff.attrChanges) {
     const values: Record<string, unknown> = {};
-    for (const change of changes) values[change.path] = change.to;
+    for (const change of changes) values[change.path] = structuredClone(change.to);
     events.push({
       t,
       type: "block.updated",
@@ -89,8 +92,8 @@ export function synthesizeEvents(
         type: te.event,
         docId,
         blockId: block.blockId,
-        from: te.from,
-        to: te.to,
+        from: structuredClone(te.from),
+        to: structuredClone(te.to),
         ...by,
       });
     }
