@@ -5,7 +5,7 @@ import { asDocId, type DocId } from "../model/ids.js";
 import { createMemStorage, type MemStorage } from "../ports/mem.js";
 import type { EventRecord, Storage } from "../ports/ports.js";
 import type { WatchSource } from "../watch/source.js";
-import { createEngine } from "./engine.js";
+import { createEngine, includeIndexSnapshot } from "./engine.js";
 
 /**
  * #3: the parse cache is seeded by writes, and the reverse include index is
@@ -182,6 +182,7 @@ async function run(seed: number, steps: number, mode: Mode = "v1"): Promise<void
       if (mode === "pending") await settlePending();
       await fullStep(id, label);
     }
+    if (pending.size === 0) await checkIndex(label);
     if (mode !== "pending") await check(label);
     else if (pending.size === 0 && rand() < 0.1) await check(label);
   }
@@ -317,14 +318,28 @@ async function run(seed: number, steps: number, mode: Mode = "v1"): Promise<void
     }
   }
 
-  async function check(label: string): Promise<void> {
-    // The reference: a from-scratch index over current storage.
+  /** The reference: a from-scratch index over current storage, with no caches. */
+  async function referenceIndex(): Promise<ReadonlyMap<DocId, ReadonlySet<DocId>>> {
     const parseOptions = { blockTypes: new Set(blocks.map((b) => b.type)) };
     const edges = [];
     for (const s of subscribed.keys()) {
       edges.push(...(await resolveIncludes(s, storage, parseOptions, limits)).includes);
     }
-    const index = buildReverseIndex(edges);
+    return buildReverseIndex(edges);
+  }
+
+  /** The engine's index, read without writing anything, equals the reference. */
+  async function checkIndex(label: string): Promise<void> {
+    const want = new Map(
+      [...(await referenceIndex()).entries()]
+        .filter(([, includers]) => includers.size > 0)
+        .map(([doc, includers]) => [doc, [...includers].sort()]),
+    );
+    expect(await includeIndexSnapshot(engine), `${label} index`).toEqual(want);
+  }
+
+  async function check(label: string): Promise<void> {
+    const index = await referenceIndex();
     const recipients = (doc: DocId): Set<DocId> => {
       const out = new Set<DocId>([doc]);
       const stack = [doc];

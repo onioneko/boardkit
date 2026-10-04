@@ -664,6 +664,27 @@ function resolveWatchTrue(storage: Storage): WatchOptions {
   return { rootDir };
 }
 
+/** Each engine's include-index snapshot reader, for {@link includeIndexSnapshot}. */
+const indexSnapshotReaders = new WeakMap<
+  Engine,
+  () => Promise<ReadonlyMap<DocId, readonly DocId[]>>
+>();
+
+/**
+ * Test-only and read-only (not exported from the package): the reverse
+ * include index the engine's next write would deliver against, brought up to
+ * date first exactly as a write would (which may read storage, never write
+ * it). Maps each included document to its direct includers, sorted. Tests
+ * compare it with an index built from scratch over current storage.
+ * @param engine An engine from {@link createEngine}.
+ * @returns The index, or an empty map for an object that is not one.
+ */
+export async function includeIndexSnapshot(
+  engine: Engine,
+): Promise<ReadonlyMap<DocId, readonly DocId[]>> {
+  return (await indexSnapshotReaders.get(engine)?.()) ?? new Map();
+}
+
 /**
  * Assemble an Engine from storage, optional clock, block types, projectors, and
  * write policy. The engine wires the read path (LOAD → PARSE → LINK → MERGE →
@@ -1195,7 +1216,7 @@ export function createEngine(opts: EngineOptions): Engine {
     };
   }
 
-  return {
+  const engine: Engine = {
     async projection<T = unknown>(
       docId: string,
       projectorId: string,
@@ -1553,4 +1574,13 @@ export function createEngine(opts: EngineOptions): Engine {
       invalidateReverseIndex();
     },
   };
+  indexSnapshotReaders.set(engine, async () => {
+    await ensureReverseIndex();
+    return new Map(
+      [...reverseIndex.entries()]
+        .filter(([, includers]) => includers.size > 0)
+        .map(([docId, includers]) => [docId, [...includers].sort()]),
+    );
+  });
+  return engine;
 }
