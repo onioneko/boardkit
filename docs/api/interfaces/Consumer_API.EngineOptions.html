@@ -64,7 +64,8 @@ parser's time grows quadratically with the depth of nested containers or
 emphasis, and a few thousand levels (a few KB) overflow the call stack.
 On by default with <a href="../variables/Consumer_API.DEFAULT_COMPLEXITY_LIMITS.html" class="tsd-kind-variable">DEFAULT_COMPLEXITY_LIMITS</a> (32 container markers
 on a line, 160 columns of prefix indentation, <code>[</code> nesting 32 deep in a
-paragraph, delimiter runs of 64, emphasis nesting 64 deep in a paragraph);
+paragraph, delimiter runs of 64, emphasis nesting 256 deep in a paragraph;
+fenced code is not counted for the last three);
 an object overrides the fields it sets,
 and <code>false</code> turns the check off. A document over any limit is treated
 like one over <a href="#maxdocumentbytes" class="tsd-kind-property">EngineOptions.maxDocumentBytes</a>, with an
@@ -97,7 +98,7 @@ degrade as above.</p>
 
 </div></div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/engine/engine.ts#L289">packages/core/src/engine/engine.ts:289</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/engine/engine.ts#L290">packages/core/src/engine/engine.ts:290</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="eventsink"><code class="tsd-tag">Optional</code> <code class="tsd-tag">Readonly</code><span>event<wbr/>Sink</span><a href="#eventsink" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">eventSink</span><span class="tsd-signature-symbol">?:</span> <a href="Consumer_API.EventSink.html" class="tsd-signature-type tsd-kind-interface">EventSink</a></div>
@@ -236,7 +237,7 @@ object with an explicit <code>rootDir</code> (and a <code>source</code>) to watc
 workspace.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/engine/engine.ts#L299">packages/core/src/engine/engine.ts:299</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/engine/engine.ts#L300">packages/core/src/engine/engine.ts:300</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="writepolicy"><code class="tsd-tag">Optional</code> <code class="tsd-tag">Readonly</code><span>write<wbr/>Policy</span><a href="#writepolicy" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">writePolicy</span><span class="tsd-signature-symbol">?:</span> <a href="Consumer_API.WritePolicy.html" class="tsd-signature-type tsd-kind-interface">WritePolicy</a></div>

@@ -1,4 +1,4 @@
-<!DOCTYPE html><html class="default" lang="en" data-base="../"><head><meta charset="utf-8"/><meta http-equiv="x-ua-compatible" content="IE=edge"/><title>createEngine | boardkit - v0.0.0</title><meta name="description" content="Documentation for boardkit"/><meta name="viewport" content="width=device-width, initial-scale=1"/><link rel="stylesheet" href="../assets/style.css"/><link rel="stylesheet" href="../assets/highlight.css"/><script defer src="../assets/main.js"></script><script async src="../assets/icons.js" id="tsd-icons-script"></script><script async src="../assets/search.js" id="tsd-search-script"></script><script async src="../assets/navigation.js" id="tsd-nav-script"></script><script async src="../assets/hierarchy.js" id="tsd-hierarchy-script"></script></head><body><script>document.documentElement.dataset.theme = localStorage.getItem("tsd-theme") || "os";document.body.style.display="none";setTimeout(() => window.app?app.showPage():document.body.style.removeProperty("display"),500)</script><header class="tsd-page-toolbar">
+<!DOCTYPE html><html class="default" lang="en" data-base="../"><head><meta charset="utf-8"/><meta http-equiv="x-ua-compatible" content="IE=edge"/><title>fencedCodeLines | boardkit - v0.0.0</title><meta name="description" content="Documentation for boardkit"/><meta name="viewport" content="width=device-width, initial-scale=1"/><link rel="stylesheet" href="../assets/style.css"/><link rel="stylesheet" href="../assets/highlight.css"/><script defer src="../assets/main.js"></script><script async src="../assets/icons.js" id="tsd-icons-script"></script><script async src="../assets/search.js" id="tsd-search-script"></script><script async src="../assets/navigation.js" id="tsd-nav-script"></script><script async src="../assets/hierarchy.js" id="tsd-hierarchy-script"></script></head><body><script>document.documentElement.dataset.theme = localStorage.getItem("tsd-theme") || "os";document.body.style.display="none";setTimeout(() => window.app?app.showPage():document.body.style.removeProperty("display"),500)</script><header class="tsd-page-toolbar">
 <div class="tsd-toolbar-contents container"><a href="../index.html" class="title">boardkit - v0.0.0</a>
 <div id="tsd-toolbar-links"></div><button id="tsd-search-trigger" class="tsd-widget" aria-label="Search"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><use href="../assets/icons.svg#icon-search"></use></svg></button><dialog id="tsd-search" aria-label="Search"><input role="combobox" id="tsd-search-input" aria-controls="tsd-search-results" aria-autocomplete="list" aria-expanded="true" autocapitalize="off" autocomplete="off" placeholder="Search the docs" maxLength="100"/>
 <ul role="listbox" id="tsd-search-results"></ul>
@@ -8,35 +8,38 @@
 <div class="col-content">
 <div class="tsd-page-title">
 <ul class="tsd-breadcrumb" aria-label="Breadcrumb">
-<li><a href="../modules/Consumer_API.html">Consumer API</a></li>
-<li><a href="" aria-current="page">createEngine</a></li></ul>
-<h1>Function createEngine</h1></div>
+<li><a href="../modules/Internal_API.html">Internal API</a></li>
+<li><a href="" aria-current="page">fencedCodeLines</a></li></ul>
+<h1>Function fencedCodeLines</h1></div>
 <section class="tsd-panel">
 <ul class="tsd-signatures">
 <li class="">
-<div class="tsd-signature tsd-anchor-link" id="createengine"><span class="tsd-kind-call-signature">createEngine</span><span class="tsd-signature-symbol">(</span><span class="tsd-kind-parameter">opts</span><span class="tsd-signature-symbol">:</span> <a href="../interfaces/Consumer_API.EngineOptions.html" class="tsd-signature-type tsd-kind-interface">EngineOptions</a><span class="tsd-signature-symbol">)</span><span class="tsd-signature-symbol">:</span> <a href="../interfaces/Consumer_API.Engine.html" class="tsd-signature-type tsd-kind-interface">Engine</a><a href="#createengine" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></div>
+<div class="tsd-signature tsd-anchor-link" id="fencedcodelines"><span class="tsd-kind-call-signature">fencedCodeLines</span><span class="tsd-signature-symbol">(</span><span class="tsd-kind-parameter">src</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">)</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">Uint8Array</span><a href="#fencedcodelines" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></div>
 <div class="tsd-description">
-<div class="tsd-comment tsd-typography"><p>Assemble an Engine from storage, optional clock, block types, projectors, and
-write policy. The engine wires the read path (LOAD → PARSE → LINK → MERGE →
-RESOLVE → PROJECT) and the write pipeline (VALIDATE → LOCK → COMMIT → DIFF →
-EMIT) over the supplied ports, and starts watching if <code>opts.watch</code> is set.</p>
+<div class="tsd-comment tsd-typography"><p>Which lines are fenced code, so the scan can skip their content: emphasis,
+brackets and delimiter runs mean nothing there. A per-line flag: 0 for a
+line the scan reads, 1 for fenced code (including a closing fence), 2 for
+an opening fence (code too, and the end of any open paragraph).</p>
+<p>It follows CommonMark's fence rules (3 or more backticks or tildes, closed
+by a run of the same character at least as long, indented at most 3
+spaces, with nothing after it; an unclosed fence runs to the end of the
+document or of its block quote), but only where it can follow them
+exactly. Wherever it cannot be sure the parser reads a line as code, it
+reads the line, and from the first line it cannot follow (a fence in a
+list item, an indented or tab-indented fence, a line that may start an
+HTML block) it skips nothing more. Front matter is never searched for
+fences. Linear in the source length.</p>
 </div>
 <div class="tsd-parameters">
 <h4 class="tsd-parameters-title">Parameters</h4>
 <ul class="tsd-parameter-list">
-<li><span><span class="tsd-kind-parameter">opts</span>: <a href="../interfaces/Consumer_API.EngineOptions.html" class="tsd-signature-type tsd-kind-interface">EngineOptions</a></span>
-<div class="tsd-comment tsd-typography"><p>The engine's configuration (only <code>storage</code> is required).</p>
+<li><span><span class="tsd-kind-parameter">src</span>: <span class="tsd-signature-type">string</span></span>
+<div class="tsd-comment tsd-typography"><p>The document source.</p>
 </div></li></ul></div>
-<h4 class="tsd-returns-title">Returns <a href="../interfaces/Consumer_API.Engine.html" class="tsd-signature-type tsd-kind-interface">Engine</a></h4><p>The assembled engine.</p>
-
-<div class="tsd-comment tsd-typography">
-<div class="tsd-tag-example">
-<h4 class="tsd-anchor-link" id="example">Example<a href="#example" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h4><pre><code class="ts"><span class="hl-5">const</span><span class="hl-1"> </span><span class="hl-7">engine</span><span class="hl-1"> = </span><span class="hl-0">createEngine</span><span class="hl-1">({</span><br/><span class="hl-1">  </span><span class="hl-4">storage:</span><span class="hl-1"> </span><span class="hl-0">createMemStorage</span><span class="hl-1">(),</span><br/><span class="hl-1">  </span><span class="hl-4">blocks:</span><span class="hl-1"> </span><span class="hl-4">starterBlocks</span><span class="hl-1">,</span><br/><span class="hl-1">});</span>
-</code><button type="button">Copy</button></pre>
-
-</div></div><aside class="tsd-sources">
+<h4 class="tsd-returns-title">Returns <span class="tsd-signature-type">Uint8Array</span></h4><p>One flag per line, split at LF, CR and CRLF.</p>
+<aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/engine/engine.ts#L622">packages/core/src/engine/engine.ts:622</a></li></ul></aside></div></li></ul></section></div>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/parse/complexity.ts#L366">packages/core/src/parse/complexity.ts:366</a></li></ul></aside></div></li></ul></section></div>
 <div class="col-sidebar">
 <div class="page-menu">
 <div class="tsd-navigation settings">

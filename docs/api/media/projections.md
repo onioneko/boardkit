@@ -188,19 +188,29 @@ exported as `DEFAULT_COMPLEXITY_LIMITS`:
 | `maxIndentColumns` | 160 | Columns of whitespace in one line's prefix, a tab advancing to the next multiple of 4 |
 | `maxBracketDepth` | 32 | `[` nesting in one paragraph; escapes are skipped, and a blank line or a line of only `>` markers resets the count (an empty list item does not, since it cannot end a paragraph) |
 | `maxDelimiterRun` | 64 | A run of one of `*`, `_` or `~`; a line of one such character (or `-` or a backtick) and whitespace, a thematic break or code fence, is not counted |
-| `maxEmphasisDepth` | 64 | Emphasis and strikethrough nesting in one paragraph, estimated with the parser's own rules for which `*`, `_` and `~` runs can open or close: a run that can open adds its length, and a run that can only close cancels openers of its own marker that could not also close |
+| `maxEmphasisDepth` | 256 | Emphasis and strikethrough nesting in one paragraph, estimated with the parser's own rules for which `*`, `_` and `~` runs can open or close: a run that can open adds its length, and a run that can only close cancels openers of its own marker that could not also close |
 
 A document over any limit is handled exactly like one over the size limit, with an
 `E_DOCUMENT_TOO_COMPLEX` diagnostic that gives the line, and reason `too-complex` for a rejected
-write, patch or intent. The scan does not know about code fences, so the lines inside a fence
-count like any others: a code sample that opens many `[` without closing them (for example
-`x.append('[')` on 40 lines), or that holds a long `***` or `___` run next to other text, can
-be refused. Raise the limit that refuses it if your documents need this. Recognizing fences
-instead would let input that the parser reads differently slip past the scan.
+write, patch or intent.
 
-The counts are upper bounds, so some ordinary text is over-counted. In particular a `*` between
-two letters or digits (`2*3`) can open emphasis, so a paragraph with more than 64 of them is
-refused, even if they never pair up.
+Fenced code holds no markdown, so the scan does not count brackets, delimiter runs or emphasis
+inside it. It follows CommonMark's fence rules (3 or more backticks or tildes, closed by a run
+of the same character at least as long, indented at most 3 spaces; an unclosed fence runs to
+the end of the document or of its block quote), but only where it can follow them exactly: a
+fence at the top level or in block quotes, indented at most 1 space. A fence it cannot follow
+(in a list item, indented 2 or more spaces, or after a tab), or a line that may start an HTML
+block, ends fence skipping for the rest of the document, so the code after it is counted like
+prose. That never lets a fence hide prose from the scan; a seeded property test checks every
+skipped line against the parser. Front matter is never searched for fences.
+
+The counts are upper bounds, so some ordinary text is over-counted. Code spans are not skipped,
+and a `*` inside one, or between two letters or digits (`2*3`), can count as opening emphasis.
+A paragraph, table or tight list with more than about 256 such runs is refused: for example a
+table of roughly 85 rows of globs like `` `src/**/*.ts` ``, or about 250 rows of `` `*.md` ``.
+Raise `maxEmphasisDepth` if your documents need more. The default of 256 still bounds the cost:
+paragraphs nested 256 deep, filled to 256 KiB, parse in about 4 seconds, well under the costs
+in the table above and far from the depth that overflows the stack (about 3,000).
 
 The limits are on by default. Raise one, or set it to `Infinity`, if real documents need it, or
 pass `false` to turn the scan off:

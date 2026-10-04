@@ -17,9 +17,10 @@
 <div class="tsd-signature tsd-anchor-link" id="documentcomplexitydiagnostic"><span class="tsd-kind-call-signature">documentComplexityDiagnostic</span><span class="tsd-signature-symbol">(</span><br/>    <span class="tsd-kind-parameter">docId</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">,</span><br/>    <span class="tsd-kind-parameter">src</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">,</span><br/>    <span class="tsd-kind-parameter">limits</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">Readonly</span><span class="tsd-signature-symbol">&lt;</span><span class="tsd-signature-type">Required</span><span class="tsd-signature-symbol">&lt;</span><a href="../interfaces/Consumer_API.ComplexityLimits.html" class="tsd-signature-type tsd-kind-interface">ComplexityLimits</a><span class="tsd-signature-symbol">&gt;</span><span class="tsd-signature-symbol">&gt;</span><span class="tsd-signature-symbol">,</span><br/>    <span class="tsd-kind-parameter">phase</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">&quot;write&quot;</span> <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">&quot;read&quot;</span><span class="tsd-signature-symbol">,</span><br/><span class="tsd-signature-symbol">)</span><span class="tsd-signature-symbol">:</span> <a href="../interfaces/Consumer_API.Diagnostic.html" class="tsd-signature-type tsd-kind-interface">Diagnostic</a> <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">undefined</span><a href="#documentcomplexitydiagnostic" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></div>
 <div class="tsd-description">
 <div class="tsd-comment tsd-typography"><p>The <code>E_DOCUMENT_TOO_COMPLEX</code> diagnostic for a source over a complexity
-limit. One linear pass over the source, run before any parse: it reads
-markdown structure only approximately (it does not know about code fences,
-for example), erring towards counting more, never less.</p>
+limit. Linear passes over the source, run before any parse: it reads
+markdown structure only approximately, erring towards counting more,
+never less. Fenced code it can follow exactly (<a href="Internal_API.fencedCodeLines.html" class="tsd-kind-function">fencedCodeLines</a>) is
+not counted for brackets, delimiter runs or emphasis.</p>
 </div>
 <div class="tsd-parameters">
 <h4 class="tsd-parameters-title">Parameters</h4>
@@ -41,7 +42,7 @@ a stored document that is not parsed.</p>
 column, or <code>undefined</code> when the source is within every bound.</p>
 <aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/parse/complexity.ts#L217">packages/core/src/parse/complexity.ts:217</a></li></ul></aside></div></li></ul></section></div>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/parse/complexity.ts#L437">packages/core/src/parse/complexity.ts:437</a></li></ul></aside></div></li></ul></section></div>
 <div class="col-sidebar">
 <div class="page-menu">
 <div class="tsd-navigation settings">
