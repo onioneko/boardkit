@@ -326,12 +326,25 @@ async function run(seed: number, steps: number, mode: Mode = "v1"): Promise<void
  */
 const REGRESSION_SEEDS = [26, 41, 158, 216, 499, 606, 805, 893];
 
+/**
+ * How many `full` seeds CI runs. A run is about 40 steps of a few milliseconds
+ * each; set BOARDKIT_SEQUENCE_SEEDS for a longer soak (for example 5000).
+ */
+const FULL_SEEDS = Number(process.env.BOARDKIT_SEQUENCE_SEEDS ?? 200);
+
 describe("the incremental reverse index and the seeded parse cache match a rebuild", () => {
   for (const seed of REGRESSION_SEEDS) {
     it(`regression seed ${seed} (v1, 40 steps)`, async () => {
       await run(seed, 40, "v1");
     });
   }
+  it(
+    `random runs, ${FULL_SEEDS} seeds of 40 steps, all operations`,
+    async () => {
+      for (let seed = 1; seed <= FULL_SEEDS; seed += 1) await run(seed, 40, "full");
+    },
+    Math.max(120_000, FULL_SEEDS * 400),
+  );
 });
 
 describe("a commit that lands while the index is being rebuilt", () => {
