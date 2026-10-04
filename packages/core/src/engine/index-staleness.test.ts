@@ -179,3 +179,33 @@ describe("I2: registerBlock while a write is in flight", () => {
     expect(await engine.getBlock("d", "w1")).toEqual(await fresh.getBlock("d", "w1"));
   });
 });
+
+describe("I3: an include target that could not be read once", () => {
+  it("is resolved again at the next write once it reads", async () => {
+    const inner = createMemStorage();
+    let failX = false;
+    const storage: Storage = {
+      ...inner,
+      read: async (docId: DocId) => {
+        if (failX && docId === "x") throw Object.assign(new Error("EIO"), { code: "EIO" });
+        return inner.read(docId);
+      },
+    };
+    const engine = createEngine({ storage, clock });
+    const seen: string[] = [];
+    await inner.writeAtomic(asDocId("board"), "# Board\n\n{{include:x}}\n");
+    await inner.writeAtomic(asDocId("x"), "# X\n\n{{include:y}}\n");
+    await inner.writeAtomic(asDocId("y"), "# Y\n");
+    await inner.writeAtomic(asDocId("z"), "# Z\n");
+    engine.subscribe("board", (evt) => seen.push(String(evt.docId)));
+
+    failX = true;
+    await engine.write("z", { writer, fullText: "# Z\n\n1\n" }); // the pass cannot read x
+    failX = false;
+    await engine.write("z", { writer, fullText: "# Z\n\n2\n" });
+
+    seen.length = 0;
+    await engine.write("y", { writer, fullText: "# Y\n\n2\n" });
+    expect(seen).toContain("y");
+  });
+});

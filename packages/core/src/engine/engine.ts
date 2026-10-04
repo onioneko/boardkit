@@ -867,6 +867,13 @@ export function createEngine(opts: EngineOptions): Engine {
         // Read but not loaded (missing, unreadable, over a limit): not known.
         for (const read of reads) if (!loaded.has(read)) knownVersion.delete(read);
         link = { edges: resolved.includes.filter((e) => e.status === "ok"), reads };
+        // An include target that could not be read (EIO, EACCES, a network
+        // glitch) may read next time, and nothing would commit to tell us:
+        // try again at the next write. A target outside the workspace is
+        // diagnosed differently and is final.
+        if (resolved.diagnostics.some((d) => d.code === "E_INCLUDE_UNREADABLE")) {
+          retrySubscribers.add(docId);
+        }
       } catch {
         // Fail-soft: the board's own projection reports the error when read.
         link = { edges: [], reads: new Set([docId]) };
