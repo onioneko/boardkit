@@ -1,0 +1,13 @@
+{
+  "entryPoints": [
+    "packages/core/src/index.ts",
+    "packages/core/src/internal/index.ts",
+    "packages/html/src/index.ts",
+    "packages/blocks/src/index.ts"
+  ],
+  "entryPointStrategy": "resolve",
+  "out": "docs/api",
+  "tsconfig": "tsconfig.base.json",
+  "includeVersion": true,
+  "exclude": ["**/*.test.ts"]
+}

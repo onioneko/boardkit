@@ -1,0 +1,42 @@
+name: Feature request
+description: Propose a new feature or a change to the public API.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Agreeing on the behavior before anyone writes code saves a rewrite. CONTRIBUTING.md explains how a proposal becomes a pull request.
+  - type: dropdown
+    id: package
+    attributes:
+      label: Package
+      description: Which package would the change affect? Select every one that applies.
+      multiple: true
+      options:
+        - "@onioneko/boardkit-core"
+        - "@onioneko/boardkit-html"
+        - "@onioneko/boardkit-blocks"
+        - Not sure
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What are you trying to do, and what stops you today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Describe the behavior or API you propose. A short code sample of how you would use it helps.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other approaches you considered, including what you can do with the current API.
+    validations:
+      required: false

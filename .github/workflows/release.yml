@@ -1,0 +1,83 @@
+# On pushes to main, uses Changesets to open a version pull request or publish the packages to npm.
+# Publishing authenticates with npm trusted publishing (GitHub OIDC); no npm token is stored.
+#
+# Two jobs keep the checks away from the publish credentials: `verify` runs lint, build, typecheck
+# and tests with a read-only token. Only after it passes does `release` get the write and id-token
+# permissions, and it runs nothing but install, build and Changesets.
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+
+concurrency: ${{ github.workflow }}-${{ github.ref }}
+
+permissions: {}
+
+jobs:
+  verify:
+    name: Verify
+    if: github.repository == 'onioneko/boardkit'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - name: Enable pnpm
+        run: corepack enable
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Lint
+        run: pnpm exec biome ci .
+      - name: Build
+        run: pnpm build
+      - name: Typecheck
+        run: pnpm typecheck
+      - name: Test
+        run: pnpm test
+
+  release:
+    name: Release
+    needs: verify
+    if: github.repository == 'onioneko/boardkit'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # push the version branch, release tags and GitHub releases
+      pull-requests: write # open and update the version pull request
+      id-token: write # npm trusted publishing and provenance
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+      # Trusted publishing needs npm 11.5.1 or later; upgrade only if the runner's Node ships an older npm.
+      - name: Ensure npm supports trusted publishing
+        run: |
+          if ! node -e 'const [a, b, c] = process.argv[1].split(".").map(Number); process.exit(a > 11 || (a === 11 && (b > 5 || (b === 5 && c >= 1))) ? 0 : 1)' "$(npm --version)"; then
+            npm install -g npm@^11.5.1
+          fi
+          npm --version
+      - name: Enable pnpm
+        run: corepack enable
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      # dist/ is git-ignored, so the packages are built again here for publishing.
+      - name: Build
+        run: pnpm build
+      # changeset publish runs `pnpm publish` per package, which packs the package (rewriting
+      # workspace: and catalog: ranges) and hands the tarball to the npm CLI for the OIDC exchange.
+      - name: Version and publish
+        id: changesets
+        uses: changesets/action@a45c4d594aa4e2c509dc14a9f2b3b67ba3780d0d # v1.9.0
+        with:
+          version: pnpm exec changeset version
+          publish: pnpm exec changeset publish

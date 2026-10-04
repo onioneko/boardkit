@@ -1,0 +1,75 @@
+<!DOCTYPE html><html class="default" lang="en" data-base="../"><head><meta charset="utf-8"/><meta http-equiv="x-ua-compatible" content="IE=edge"/><title>panelSchema | boardkit - v0.0.0</title><meta name="description" content="Documentation for boardkit"/><meta name="viewport" content="width=device-width, initial-scale=1"/><link rel="stylesheet" href="../assets/style.css"/><link rel="stylesheet" href="../assets/highlight.css"/><script defer src="../assets/main.js"></script><script async src="../assets/icons.js" id="tsd-icons-script"></script><script async src="../assets/search.js" id="tsd-search-script"></script><script async src="../assets/navigation.js" id="tsd-nav-script"></script><script async src="../assets/hierarchy.js" id="tsd-hierarchy-script"></script></head><body><script>document.documentElement.dataset.theme = localStorage.getItem("tsd-theme") || "os";document.body.style.display="none";setTimeout(() => window.app?app.showPage():document.body.style.removeProperty("display"),500)</script><header class="tsd-page-toolbar">
+<div class="tsd-toolbar-contents container"><a href="../index.html" class="title">boardkit - v0.0.0</a>
+<div id="tsd-toolbar-links"></div><button id="tsd-search-trigger" class="tsd-widget" aria-label="Search"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><use href="../assets/icons.svg#icon-search"></use></svg></button><dialog id="tsd-search" aria-label="Search"><input role="combobox" id="tsd-search-input" aria-controls="tsd-search-results" aria-autocomplete="list" aria-expanded="true" autocapitalize="off" autocomplete="off" placeholder="Search the docs" maxLength="100"/>
+<ul role="listbox" id="tsd-search-results"></ul>
+<div id="tsd-search-status" aria-live="polite" aria-atomic="true">
+<div>Preparing search index...</div></div></dialog><a href="#" class="tsd-widget menu" id="tsd-toolbar-menu-trigger" data-toggle="menu" aria-label="Menu"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><use href="../assets/icons.svg#icon-menu"></use></svg></a></div></header>
+<div class="container container-main">
+<div class="col-content">
+<div class="tsd-page-title">
+<ul class="tsd-breadcrumb" aria-label="Breadcrumb">
+<li><a href="../modules/html_src.html">html/src</a></li>
+<li><a href="" aria-current="page">panelSchema</a></li></ul>
+<h1>Function panelSchema</h1></div>
+<section class="tsd-panel">
+<ul class="tsd-signatures">
+<li class="">
+<div class="tsd-signature tsd-anchor-link" id="panelschema"><span class="tsd-kind-call-signature">panelSchema</span><span class="tsd-signature-symbol">()</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">Schema</span><a href="#panelschema" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></div>
+<div class="tsd-description">
+<div class="tsd-comment tsd-typography"><p>Panel-embedding sanitize schema, applied to the whole projected document:
+defaultSchema plus className/id/data-intent/data-source/data-state on every
+element, <code>data-doc</code>/<code>data-section</code> on <code>section</code> (the include provenance
+wrapper), <code>button</code> and <code>label</code> added to <code>tagNames</code> (the panel renders
+transition buttons; a checklist item wraps its input and text in a <code>label</code>
+so a click on the text toggles the box — neither tag is in the default
+schema), and <code>required.input</code> narrowed to <code>{ type: &quot;checkbox&quot; }</code>.</p>
+<p>URL protocols follow defaultSchema, except that <code>href</code> is narrowed to
+<code>http</code>, <code>https</code> and <code>mailto</code>: a URL with any other scheme (<code>javascript:</code>,
+<code>vbscript:</code>, <code>data:</code>, …) is dropped, while relative and fragment URLs pass.
+<code>src</code> keeps defaultSchema's <code>http</code>/<code>https</code>. <code>srcSet</code> (a list of URLs the
+sanitizer cannot check one by one) is removed from <code>source</code>.</p>
+<p>BoardKit inputs that carry <code>data-intent</code> are interactive controls, not
+GitHub's read-only tasklist markers, so <code>defaultSchema.required.input</code>'s
+<code>disabled: true</code> (GFM tasklist rendering — every <code>&lt;input&gt;</code> forced
+<code>disabled</code>) is deliberately not inherited here. <code>type</code> stays required to
+<code>&quot;checkbox&quot;</code>, the only input type BoardKit projects.</p>
+<p><code>label</code> is given no attribute list of its own here, because one would not
+help: <code>hast-util-sanitize</code>'s <code>'*'</code> wildcard entry (extended above with
+<code>className</code>/<code>id</code>/<code>data-intent</code>/<code>data-source</code>/<code>data-state</code> so arbitrary hook-authored
+elements can carry them) is an <em>unconditional</em> per-attribute fallback — a
+tag with its own specific attribute list still falls back to <code>'*'</code> for any
+key that list doesn't itself allow (<code>properties()</code> in <code>hast-util-sanitize</code>'s
+<code>lib/index.js</code> retries <code>defaults</code> whenever the tag-specific lookup misses,
+regardless of why; confirmed empirically against the installed 5.0.2). A
+schema can add permissions for one tag beyond the wildcard; it cannot
+revoke a wildcard-granted one for a single tag. So <code>label</code> inherits <code>for</code>
+(<code>htmlFor</code>) and <code>id</code> from the vanilla wildcard, and <code>data-intent</code>/<code>data-source</code>
+from this function's own addition — enough for a broken or hostile hook to
+redirect a click to a different control (<code>for</code>) or spoof the click's own
+intent ahead of the input it wraps, since <code>closest('[data-intent]')</code> matches
+the label before it ever reaches the input inside. <code>pruneLabelAttributes</code>
+enforces the real restriction after <code>sanitize</code> runs, where denial is
+unconditional.</p>
+</div>
+<h4 class="tsd-returns-title">Returns <span class="tsd-signature-type">Schema</span></h4><p>A fresh schema; callers may extend it without affecting this module.</p>
+<aside class="tsd-sources">
+<ul>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/f5572653a3364d62cc831110c6740fcb46e67d39/packages/html/src/html.ts#L188">packages/html/src/html.ts:188</a></li></ul></aside></div></li></ul></section></div>
+<div class="col-sidebar">
+<div class="page-menu">
+<div class="tsd-navigation settings">
+<details class="tsd-accordion"><summary class="tsd-accordion-summary"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><use href="../assets/icons.svg#icon-chevronDown"></use></svg>
+<h3>Settings</h3></summary>
+<div class="tsd-accordion-details">
+<div class="tsd-filter-visibility"><span class="settings-label">Member Visibility</span>
+<ul id="tsd-filter-options">
+<li class="tsd-filter-item"><label class="tsd-filter-input"><input type="checkbox" id="tsd-filter-protected" name="protected"/><svg width="32" height="32" viewBox="0 0 32 32" aria-hidden="true"><rect class="tsd-checkbox-background" width="30" height="30" x="1" y="1" rx="6" fill="none"></rect><path class="tsd-checkbox-checkmark" d="M8.35422 16.8214L13.2143 21.75L24.6458 10.25" stroke="none" stroke-width="3.5" stroke-linejoin="round" fill="none"></path></svg><span>Protected</span></label></li>
+<li class="tsd-filter-item"><label class="tsd-filter-input"><input type="checkbox" id="tsd-filter-inherited" name="inherited" checked/><svg width="32" height="32" viewBox="0 0 32 32" aria-hidden="true"><rect class="tsd-checkbox-background" width="30" height="30" x="1" y="1" rx="6" fill="none"></rect><path class="tsd-checkbox-checkmark" d="M8.35422 16.8214L13.2143 21.75L24.6458 10.25" stroke="none" stroke-width="3.5" stroke-linejoin="round" fill="none"></path></svg><span>Inherited</span></label></li>
+<li class="tsd-filter-item"><label class="tsd-filter-input"><input type="checkbox" id="tsd-filter-external" name="external"/><svg width="32" height="32" viewBox="0 0 32 32" aria-hidden="true"><rect class="tsd-checkbox-background" width="30" height="30" x="1" y="1" rx="6" fill="none"></rect><path class="tsd-checkbox-checkmark" d="M8.35422 16.8214L13.2143 21.75L24.6458 10.25" stroke="none" stroke-width="3.5" stroke-linejoin="round" fill="none"></path></svg><span>External</span></label></li></ul></div>
+<div class="tsd-theme-toggle"><label class="settings-label" for="tsd-theme">Theme</label><select id="tsd-theme"><option value="os">OS</option><option value="light">Light</option><option value="dark">Dark</option></select></div></div></details></div></div>
+<div class="site-menu">
+<nav class="tsd-navigation"><a href="../modules.html">boardkit - v0.0.0</a>
+<ul class="tsd-small-nested-navigation" id="tsd-nav-container">
+<li>Loading...</li></ul></nav></div></div></div><footer>
+<p class="tsd-generator">Generated using <a href="https://typedoc.org/" target="_blank">TypeDoc</a></p></footer>
+<div class="overlay"></div></body></html>

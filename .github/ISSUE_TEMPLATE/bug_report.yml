@@ -1,0 +1,65 @@
+name: Bug report
+description: Report something in a published BoardKit package that does not work as documented.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug. Do not report a security vulnerability here: use the private reporting described in SECURITY.md instead.
+  - type: dropdown
+    id: package
+    attributes:
+      label: Package
+      description: Which package is affected? Select every one that applies.
+      multiple: true
+      options:
+        - "@onioneko/boardkit-core"
+        - "@onioneko/boardkit-html"
+        - "@onioneko/boardkit-blocks"
+        - Not sure
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Package version
+      description: The installed version, for example from `pnpm list` or `npm ls`.
+      placeholder: 0.1.0
+    validations:
+      required: true
+  - type: input
+    id: node
+    attributes:
+      label: Node version
+      description: The output of `node --version`.
+      placeholder: v24.0.0
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: Describe the behavior you saw, including any diagnostics, errors or stack traces.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+      description: Describe what you expected to happen instead, and link the documentation that describes it if there is any.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: The smallest document source and code that show the problem, in fenced code blocks. A runnable script is best.
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Anything else that helps, such as the storage adapter in use or registered block types and middleware.
+    validations:
+      required: false

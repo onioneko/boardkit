@@ -1,0 +1,64 @@
+{
+  "name": "@onioneko/boardkit-blocks",
+  "version": "0.1.0",
+  "description": "BoardKit's reference block pack: checklist, status, metric, chart, form and rule block types for the BoardKit engine.",
+  "keywords": [
+    "markdown",
+    "board",
+    "blocks",
+    "checklist",
+    "agents",
+    "boardkit"
+  ],
+  "homepage": "https://github.com/onioneko/boardkit/tree/main/packages/blocks#readme",
+  "bugs": {
+    "url": "https://github.com/onioneko/boardkit/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/onioneko/boardkit.git",
+    "directory": "packages/blocks"
+  },
+  "license": "MIT",
+  "author": {
+    "name": "onioneko",
+    "url": "https://github.com/onioneko"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src",
+    "!src/**/*.test.ts",
+    "!src/**/__fixtures__"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {},
+  "peerDependencies": {
+    "@onioneko/boardkit-core": "workspace:>=0.1.0 <1.0.0"
+  },
+  "devDependencies": {
+    "@onioneko/boardkit-core": "workspace:^",
+    "@onioneko/boardkit-html": "workspace:^",
+    "@types/hast": "catalog:",
+    "hast-util-from-html": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

@@ -1,0 +1,74 @@
+{
+  "name": "@onioneko/boardkit-html",
+  "version": "0.1.0",
+  "description": "The html projector for BoardKit: renders a document to sanitized HTML with live values, typed blocks and expanded includes.",
+  "keywords": [
+    "markdown",
+    "html",
+    "projection",
+    "sanitize",
+    "board",
+    "boardkit"
+  ],
+  "homepage": "https://github.com/onioneko/boardkit/tree/main/packages/html#readme",
+  "bugs": {
+    "url": "https://github.com/onioneko/boardkit/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/onioneko/boardkit.git",
+    "directory": "packages/html"
+  },
+  "license": "MIT",
+  "author": {
+    "name": "onioneko",
+    "url": "https://github.com/onioneko"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src",
+    "!src/**/*.test.ts",
+    "!src/**/__fixtures__"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "unified": "catalog:",
+    "remark-parse": "catalog:",
+    "remark-frontmatter": "catalog:",
+    "remark-gfm": "catalog:",
+    "remark-rehype": "catalog:",
+    "rehype-stringify": "catalog:",
+    "hast-util-sanitize": "catalog:",
+    "unist-util-visit": "catalog:"
+  },
+  "peerDependencies": {
+    "@onioneko/boardkit-core": "workspace:>=0.1.0 <1.0.0"
+  },
+  "devDependencies": {
+    "@onioneko/boardkit-core": "workspace:^",
+    "@types/hast": "catalog:",
+    "hast-util-from-html": "catalog:",
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

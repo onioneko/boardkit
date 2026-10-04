@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>BoardKit workbench</title>
+    <link rel="stylesheet" href="/app.css" />
+  </head>
+  <body>
+    <header>
+      <h1>BoardKit workbench</h1>
+      <span class="workspace" id="workspace">…</span>
+      <span class="spacer"></span>
+      <label>reader
+        <select id="reader">
+          <option value="owner">owner</option>
+          <option value="guest">guest</option>
+        </select>
+      </label>
+      <button id="live" class="on" type="button">● live</button>
+    </header>
+
+    <main>
+      <nav id="docs"></nav>
+
+      <section>
+        <div class="tabs">
+          <button type="button" data-tab="board" class="on">board</button>
+          <button type="button" data-tab="text">text</button>
+          <button type="button" data-tab="source">source</button>
+        </div>
+        <div id="banner" hidden></div>
+        <div class="pane" id="board"></div>
+        <pre class="pane" id="text" hidden></pre>
+        <div class="pane" id="source" hidden>
+          <p>
+            <button id="save" type="button">Save</button>
+            <button class="stale" id="stale" type="button" hidden>changed on disk — reload</button>
+          </p>
+          <textarea id="src" spellcheck="false"></textarea>
+        </div>
+        <p id="diags" hidden></p>
+      </section>
+
+      <aside>
+        <h2>events</h2>
+        <ol id="events"></ol>
+        <h2>rejections</h2>
+        <ol id="rejections"></ol>
+      </aside>
+    </main>
+
+    <script src="/app.js"></script>
+  </body>
+</html>

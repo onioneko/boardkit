@@ -1,0 +1,314 @@
+import type { Diagnostic } from "../model/diagnostic.js";
+import { diagnostic } from "../model/diagnostic.js";
+import type { ParsedDoc, Section } from "../model/doc.js";
+import type { DocId, SectionId } from "../model/ids.js";
+import type { ParseOptions } from "../parse/options.js";
+import { parseDoc } from "../parse/pipeline.js";
+import { DEFAULT_MAX_DOCUMENT_BYTES, documentSizeDiagnostic } from "../parse/size.js";
+import type { Storage } from "../ports/ports.js";
+
+/** A document loaded into an aggregation graph, together with its parse result and raw source. */
+export interface LoadedDoc {
+  /** The document's id. */
+  readonly docId: DocId;
+  /** The document's parse result. */
+  readonly parsed: ParsedDoc;
+  /** Raw source bytes of the document (for span rewriting at projection time). */
+  readonly src: string;
+}
+
+/**
+ * Resolution status of one include edge. `duplicate` marks a later occurrence
+ * of an already-included `doc#section`; it renders nothing and emits an
+ * informational diagnostic. `missing-doc` also covers a target that could not
+ * be read or is over the document size limit; its diagnostic says which.
+ */
+export type IncludeStatus = "ok" | "missing-doc" | "missing-section" | "cycle" | "duplicate";
+
+/** One resolved include edge: who included what, and whether it resolved. */
+export interface ResolvedInclude {
+  /** The document containing the `{{include:…}}` reference. */
+  readonly fromDoc: DocId;
+  /** The referenced document. */
+  readonly toDoc: DocId;
+  /** The referenced section, when the include names one. */
+  readonly sectionId?: SectionId;
+  /** Whether the edge resolved (`ok`) or how it failed. */
+  readonly status: IncludeStatus;
+}
+
+/** The LINK stage result: reachable docs, resolved edges, and diagnostics. */
+export interface LinkResult {
+  /** All reachable docs — the board first, then depth-first discovery order. */
+  readonly docs: readonly LoadedDoc[];
+  /** Every resolved include edge (both `ok` and failed). */
+  readonly includes: readonly ResolvedInclude[];
+  /** Include-resolution problems (cycles, missing docs/sections, duplicates). */
+  readonly diagnostics: readonly Diagnostic[];
+}
+
+/**
+ * The prose sections of a parsed document (typed blocks excluded).
+ * @param parsed The parsed document.
+ * @returns Its sections, in document order.
+ */
+export function sectionsOf(parsed: ParsedDoc): Section[] {
+  return parsed.nodes.filter((n): n is Section => "sectionId" in n);
+}
+
+/** Build a resolved include edge (omitting an absent sectionId per exactOptionalPropertyTypes). */
+function edge(
+  fromDoc: DocId,
+  toDoc: DocId,
+  sectionId: SectionId | undefined,
+  status: IncludeStatus,
+): ResolvedInclude {
+  return {
+    fromDoc,
+    toDoc,
+    ...(sectionId !== undefined ? { sectionId } : {}),
+    status,
+  };
+}
+
+/** How {@link resolveIncludes} parses and bounds the documents it loads. */
+export interface LinkOptions {
+  /**
+   * Parse one reachable document. Defaults to `parseDoc(src, options)`; the
+   * engine passes its content-keyed parse cache here, so a document is parsed
+   * once per content rather than once per resolution pass.
+   */
+  readonly parse?: (docId: DocId, src: string) => ParsedDoc;
+  /**
+   * Documents over this many UTF-8 bytes are not parsed: the board yields an
+   * empty result and an include of one is left unexpanded, each with an
+   * `E_DOCUMENT_TOO_LARGE` diagnostic. Defaults to `DEFAULT_MAX_DOCUMENT_BYTES` (256 KiB).
+   */
+  readonly maxDocumentBytes?: number;
+}
+
+/**
+ * Resolve the include graph rooted at a board document: loads reachable docs,
+ * checks include targets, detects cycles, dedupes repeated `doc#section`
+ * references, and reports everything through diagnostics (fail-soft, never
+ * throws for content errors).
+ * @param boardDocId The document whose include graph is resolved.
+ * @param storage Where documents are read from.
+ * @param options Parse options used to parse each reachable document.
+ * @param link How documents are parsed and the size limit they must fit.
+ * @returns The reachable docs, resolved edges, and diagnostics.
+ */
+export async function resolveIncludes(
+  boardDocId: DocId,
+  storage: Storage,
+  options: ParseOptions = {},
+  link: LinkOptions = {},
+): Promise<LinkResult> {
+  const parse = link.parse ?? ((_docId: DocId, src: string) => parseDoc(src, options));
+  const maxDocumentBytes = link.maxDocumentBytes ?? DEFAULT_MAX_DOCUMENT_BYTES;
+  const docs = new Map<DocId, LoadedDoc>();
+  const includes: ResolvedInclude[] = [];
+  const diagnostics: Diagnostic[] = [];
+  const visiting = new Set<DocId>();
+  const visited = new Set<DocId>();
+  const order: DocId[] = [];
+  // Dedup keys: "docId#sectionId" for section includes, "docId#" for whole-doc includes.
+  const seen = new Set<string>();
+
+  const isOutsideRoot = (err: unknown): boolean =>
+    (err as { code?: unknown } | null)?.code === "E_PATH_OUTSIDE_ROOT";
+  const outsideRootDiagnostic = (id: DocId): Diagnostic =>
+    diagnostic(
+      "E_INCLUDE_OUTSIDE_ROOT",
+      `document ${JSON.stringify(id)} resolves outside the workspace and was not read`,
+      { nodeId: id },
+    );
+
+  // One read and one parse per document for the whole pass: a document named
+  // by many includes (duplicates, or many sections of it) is fetched and
+  // parsed once, and every include sees the same snapshot of it.
+  type ReadResult =
+    | { readonly ok: true; readonly src: string | undefined }
+    | { readonly ok: false; readonly err: unknown };
+  const reads = new Map<DocId, ReadResult>();
+  const parses = new Map<DocId, ParsedDoc>();
+  const sectionIds = new Map<DocId, ReadonlySet<SectionId>>();
+
+  async function read(id: DocId): Promise<ReadResult> {
+    const cached = reads.get(id);
+    if (cached !== undefined) return cached;
+    let result: ReadResult;
+    try {
+      result = { ok: true, src: await storage.read(id) };
+    } catch (err) {
+      result = { ok: false, err };
+    }
+    reads.set(id, result);
+    return result;
+  }
+
+  function parsedOf(id: DocId, src: string): ParsedDoc {
+    let parsed = parses.get(id);
+    if (parsed === undefined) {
+      parsed = parse(id, src);
+      parses.set(id, parsed);
+    }
+    return parsed;
+  }
+
+  function hasSection(id: DocId, src: string, sectionId: SectionId): boolean {
+    let ids = sectionIds.get(id);
+    if (ids === undefined) {
+      ids = new Set(sectionsOf(parsedOf(id, src)).map((s) => s.sectionId));
+      sectionIds.set(id, ids);
+    }
+    return ids.has(sectionId);
+  }
+
+  async function visit(docId: DocId): Promise<void> {
+    if (visited.has(docId) || visiting.has(docId)) return;
+    visiting.add(docId);
+
+    const own = await read(docId);
+    if (!own.ok) {
+      if (!isOutsideRoot(own.err)) throw own.err;
+      diagnostics.push(outsideRootDiagnostic(docId));
+      visiting.delete(docId);
+      return;
+    }
+    const src = own.src;
+    if (src === undefined) {
+      if (docId === boardDocId) {
+        diagnostics.push(diagnostic("E_BOARD_MISSING", `board document not found: ${docId}`));
+      }
+      visiting.delete(docId);
+      return;
+    }
+    // Includes of an oversized document are diagnosed before they get here;
+    // this catches the board itself.
+    const tooLarge = documentSizeDiagnostic(docId, src, maxDocumentBytes, "read");
+    if (tooLarge !== undefined) {
+      diagnostics.push(tooLarge);
+      visiting.delete(docId);
+      return;
+    }
+
+    const parsed = parsedOf(docId, src);
+    docs.set(docId, { docId, parsed, src });
+    order.push(docId);
+
+    for (const ref of parsed.refs) {
+      if (ref.kind !== "include") continue;
+
+      if (visiting.has(ref.docId)) {
+        includes.push(edge(docId, ref.docId, ref.sectionId, "cycle"));
+        diagnostics.push(
+          diagnostic("E_INCLUDE_CYCLE", `include cycle: ${docId} → ${ref.docId}`, {
+            nodeId: ref.docId,
+          }),
+        );
+        continue;
+      }
+
+      const target = await read(ref.docId);
+      if (!target.ok) {
+        const err = target.err;
+        includes.push(edge(docId, ref.docId, ref.sectionId, "missing-doc"));
+        diagnostics.push(
+          isOutsideRoot(err)
+            ? outsideRootDiagnostic(ref.docId)
+            : diagnostic(
+                "E_INCLUDE_UNREADABLE",
+                `included document ${JSON.stringify(ref.docId)} could not be read: ${
+                  err instanceof Error ? err.message : String(err)
+                }`,
+                { nodeId: ref.docId },
+              ),
+        );
+        continue;
+      }
+      const targetSrc = target.src;
+      if (targetSrc === undefined) {
+        includes.push(edge(docId, ref.docId, ref.sectionId, "missing-doc"));
+        diagnostics.push(
+          diagnostic("E_INCLUDE_MISSING_DOC", `included document not found: ${ref.docId}`, {
+            nodeId: ref.docId,
+          }),
+        );
+        continue;
+      }
+
+      // Too large to parse: the include stays verbatim, like a missing document.
+      const targetTooLarge = documentSizeDiagnostic(ref.docId, targetSrc, maxDocumentBytes, "read");
+      if (targetTooLarge !== undefined) {
+        includes.push(edge(docId, ref.docId, ref.sectionId, "missing-doc"));
+        diagnostics.push(targetTooLarge);
+        continue;
+      }
+
+      if (ref.sectionId !== undefined) {
+        if (!hasSection(ref.docId, targetSrc, ref.sectionId)) {
+          includes.push(edge(docId, ref.docId, ref.sectionId, "missing-section"));
+          diagnostics.push(
+            diagnostic(
+              "E_INCLUDE_MISSING_SECTION",
+              `section not found: ${ref.docId}#${ref.sectionId}`,
+              {
+                nodeId: ref.sectionId,
+              },
+            ),
+          );
+          continue;
+        }
+      }
+
+      // Dedup: the same doc#section keeps its first position; later
+      // occurrences become informational diagnostics and are not expanded.
+      const dedupKey = `${ref.docId}#${ref.sectionId ?? ""}`;
+      if (seen.has(dedupKey)) {
+        includes.push(edge(docId, ref.docId, ref.sectionId, "duplicate"));
+        diagnostics.push(
+          diagnostic(
+            "E_INCLUDE_DUPLICATE",
+            `duplicate include of ${ref.docId}${ref.sectionId !== undefined ? `#${ref.sectionId}` : ""}`,
+            { nodeId: ref.docId },
+          ),
+        );
+        continue;
+      }
+      seen.add(dedupKey);
+
+      includes.push(edge(docId, ref.docId, ref.sectionId, "ok"));
+      await visit(ref.docId);
+    }
+
+    visiting.delete(docId);
+    visited.add(docId);
+  }
+
+  await visit(boardDocId);
+  return { docs: order.map((id) => docs.get(id) as LoadedDoc), includes, diagnostics };
+}
+
+/**
+ * Build a reverse include index: docId → the set of documents that directly
+ * include it (direct `ok` edges only). Transitive closures are computed by
+ * consumers, e.g. dependency-scoped subscriptions.
+ * @param includes The resolved include edges.
+ * @returns A map from each included document to its direct includers.
+ */
+export function buildReverseIndex(
+  includes: readonly ResolvedInclude[],
+): Map<DocId, ReadonlySet<DocId>> {
+  const index = new Map<DocId, Set<DocId>>();
+  for (const edge of includes) {
+    if (edge.status !== "ok") continue;
+    let set = index.get(edge.toDoc);
+    if (set === undefined) {
+      set = new Set();
+      index.set(edge.toDoc, set);
+    }
+    set.add(edge.fromDoc);
+  }
+  return new Map([...index.entries()].map(([docId, set]) => [docId, set as ReadonlySet<DocId>]));
+}

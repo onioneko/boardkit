@@ -1,0 +1,88 @@
+{
+  "name": "@onioneko/boardkit-core",
+  "version": "0.1.0",
+  "description": "The BoardKit engine: a Markdown document engine with typed blocks, dual-mode writes, projections, events and include aggregation.",
+  "keywords": [
+    "markdown",
+    "document-engine",
+    "board",
+    "agents",
+    "projection",
+    "blocks",
+    "events"
+  ],
+  "homepage": "https://github.com/onioneko/boardkit/tree/main/packages/core#readme",
+  "bugs": {
+    "url": "https://github.com/onioneko/boardkit/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/onioneko/boardkit.git",
+    "directory": "packages/core"
+  },
+  "license": "MIT",
+  "author": {
+    "name": "onioneko",
+    "url": "https://github.com/onioneko"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./internal": {
+      "types": "./dist/internal/index.d.ts",
+      "import": "./dist/internal/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src",
+    "!src/**/*.test.ts",
+    "!src/**/__fixtures__"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "unified": "catalog:",
+    "remark-parse": "catalog:",
+    "remark-frontmatter": "catalog:",
+    "remark-gfm": "catalog:",
+    "unist-util-visit": "catalog:",
+    "github-slugger": "catalog:",
+    "yaml": "catalog:",
+    "ajv": "catalog:",
+    "ajv-formats": "catalog:",
+    "@sinclair/typebox": "catalog:",
+    "magic-string": "catalog:",
+    "write-file-atomic": "catalog:",
+    "proper-lockfile": "catalog:",
+    "chokidar": "catalog:",
+    "lru-cache": "catalog:",
+    "nanoid": "catalog:",
+    "fast-deep-equal": "catalog:",
+    "memfs": "catalog:",
+    "@types/hast": "catalog:",
+    "@types/mdast": "catalog:"
+  },
+  "devDependencies": {
+    "vitest": "catalog:",
+    "typescript": "catalog:",
+    "@types/unist": "catalog:",
+    "@types/write-file-atomic": "catalog:",
+    "@types/node": "catalog:",
+    "@types/proper-lockfile": "^4.1.4"
+  }
+}

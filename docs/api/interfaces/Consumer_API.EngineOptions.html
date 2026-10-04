@@ -1,0 +1,225 @@
+<!DOCTYPE html><html class="default" lang="en" data-base="../"><head><meta charset="utf-8"/><meta http-equiv="x-ua-compatible" content="IE=edge"/><title>EngineOptions | boardkit - v0.0.0</title><meta name="description" content="Documentation for boardkit"/><meta name="viewport" content="width=device-width, initial-scale=1"/><link rel="stylesheet" href="../assets/style.css"/><link rel="stylesheet" href="../assets/highlight.css"/><script defer src="../assets/main.js"></script><script async src="../assets/icons.js" id="tsd-icons-script"></script><script async src="../assets/search.js" id="tsd-search-script"></script><script async src="../assets/navigation.js" id="tsd-nav-script"></script><script async src="../assets/hierarchy.js" id="tsd-hierarchy-script"></script></head><body><script>document.documentElement.dataset.theme = localStorage.getItem("tsd-theme") || "os";document.body.style.display="none";setTimeout(() => window.app?app.showPage():document.body.style.removeProperty("display"),500)</script><header class="tsd-page-toolbar">
+<div class="tsd-toolbar-contents container"><a href="../index.html" class="title">boardkit - v0.0.0</a>
+<div id="tsd-toolbar-links"></div><button id="tsd-search-trigger" class="tsd-widget" aria-label="Search"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><use href="../assets/icons.svg#icon-search"></use></svg></button><dialog id="tsd-search" aria-label="Search"><input role="combobox" id="tsd-search-input" aria-controls="tsd-search-results" aria-autocomplete="list" aria-expanded="true" autocapitalize="off" autocomplete="off" placeholder="Search the docs" maxLength="100"/>
+<ul role="listbox" id="tsd-search-results"></ul>
+<div id="tsd-search-status" aria-live="polite" aria-atomic="true">
+<div>Preparing search index...</div></div></dialog><a href="#" class="tsd-widget menu" id="tsd-toolbar-menu-trigger" data-toggle="menu" aria-label="Menu"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><use href="../assets/icons.svg#icon-menu"></use></svg></a></div></header>
+<div class="container container-main">
+<div class="col-content">
+<div class="tsd-page-title">
+<ul class="tsd-breadcrumb" aria-label="Breadcrumb">
+<li><a href="../modules/Consumer_API.html">Consumer API</a></li>
+<li><a href="" aria-current="page">EngineOptions</a></li></ul>
+<h1>Interface EngineOptions</h1></div>
+<section class="tsd-panel tsd-comment">
+<div class="tsd-comment tsd-typography"><p>Everything the engine needs at construction.</p>
+</div></section>
+<div class="tsd-signature"><span class="tsd-signature-keyword">interface</span> <span class="tsd-kind-interface">EngineOptions</span> <span class="tsd-signature-symbol">{</span><br/>    <a class="tsd-kind-property" href="#blocks">blocks</a><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-keyword">readonly</span> <a href="../types/Consumer_API.AnyBlockType.html" class="tsd-signature-type tsd-kind-type-alias">AnyBlockType</a><span class="tsd-signature-symbol">[]</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#clock">clock</a><span class="tsd-signature-symbol">?:</span> <a href="../types/Consumer_API.Clock.html" class="tsd-signature-type tsd-kind-type-alias">Clock</a><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#eventsink">eventSink</a><span class="tsd-signature-symbol">?:</span> <a href="Consumer_API.EventSink.html" class="tsd-signature-type tsd-kind-interface">EventSink</a><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#includelimits">includeLimits</a><span class="tsd-signature-symbol">?:</span> <a href="Consumer_API.IncludeLimits.html" class="tsd-signature-type tsd-kind-interface">IncludeLimits</a><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#lock">lock</a><span class="tsd-signature-symbol">?:</span> <a href="Consumer_API.Lock.html" class="tsd-signature-type tsd-kind-interface">Lock</a><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#maxdocumentbytes">maxDocumentBytes</a><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">number</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#middleware">middleware</a><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-symbol">{</span><br/>        <span class="tsd-kind-property">projection</span><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-keyword">readonly</span> <a href="../types/Consumer_API.ProjectionMiddleware.html" class="tsd-signature-type tsd-kind-type-alias">ProjectionMiddleware</a><span class="tsd-signature-symbol">[]</span><span class="tsd-signature-symbol">;</span><br/>        <span class="tsd-kind-property">write</span><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-keyword">readonly</span> <a href="../types/Consumer_API.WriteMiddleware.html" class="tsd-signature-type tsd-kind-type-alias">WriteMiddleware</a><span class="tsd-signature-symbol">[]</span><span class="tsd-signature-symbol">;</span><br/>    <span class="tsd-signature-symbol">}</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#parseoptions">parseOptions</a><span class="tsd-signature-symbol">?:</span> <a href="Consumer_API.ParseOptions.html" class="tsd-signature-type tsd-kind-interface">ParseOptions</a><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#projectors">projectors</a><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-keyword">readonly</span> <a href="Consumer_API.Projector.html" class="tsd-signature-type tsd-kind-interface">Projector</a><span class="tsd-signature-symbol">&lt;</span><span class="tsd-signature-type">unknown</span><span class="tsd-signature-symbol">&gt;</span><span class="tsd-signature-symbol">[]</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#storage">storage</a><span class="tsd-signature-symbol">:</span> <a href="Consumer_API.Storage.html" class="tsd-signature-type tsd-kind-interface">Storage</a><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#watch">watch</a><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">boolean</span> <span class="tsd-signature-symbol">|</span> <a href="Consumer_API.WatchOptions.html" class="tsd-signature-type tsd-kind-interface">WatchOptions</a><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#writepolicy">writePolicy</a><span class="tsd-signature-symbol">?:</span> <a href="Consumer_API.WritePolicy.html" class="tsd-signature-type tsd-kind-interface">WritePolicy</a><span class="tsd-signature-symbol">;</span><br/><span class="tsd-signature-symbol">}</span></div><aside class="tsd-sources">
+<ul>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/f5572653a3364d62cc831110c6740fcb46e67d39/packages/core/src/engine/engine.ts#L151">packages/core/src/engine/engine.ts:151</a></li></ul></aside>
+<section class="tsd-panel-group tsd-index-group">
+<section class="tsd-panel tsd-index-panel">
+<details class="tsd-index-content tsd-accordion" open><summary class="tsd-accordion-summary tsd-index-summary"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><use href="../assets/icons.svg#icon-chevronDown"></use></svg>
+<h5 class="tsd-index-heading uppercase">Index</h5></summary>
+<div class="tsd-accordion-details">
+<section class="tsd-index-section">
+<h3 class="tsd-index-heading tsd-anchor-link" id="properties">Properties<a href="#properties" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<div class="tsd-index-list"><a href="#blocks" class="tsd-index-link"><svg class="tsd-kind-icon" viewBox="0 0 24 24" aria-label="Property"><use href="../assets/icons.svg#icon-1024"></use></svg><span>blocks?</span></a>
+<a href="#clock" class="tsd-index-link"><svg class="tsd-kind-icon" viewBox="0 0 24 24" aria-label="Property"><use href="../assets/icons.svg#icon-1024"></use></svg><span>clock?</span></a>
+<a href="#eventsink" class="tsd-index-link"><svg class="tsd-kind-icon" viewBox="0 0 24 24" aria-label="Property"><use href="../assets/icons.svg#icon-1024"></use></svg><span>event<wbr/>Sink?</span></a>
+<a href="#includelimits" class="tsd-index-link"><svg class="tsd-kind-icon" viewBox="0 0 24 24" aria-label="Property"><use href="../assets/icons.svg#icon-1024"></use></svg><span>include<wbr/>Limits?</span></a>
+<a href="#lock" class="tsd-index-link"><svg class="tsd-kind-icon" viewBox="0 0 24 24" aria-label="Property"><use href="../assets/icons.svg#icon-1024"></use></svg><span>lock?</span></a>
+<a href="#maxdocumentbytes" class="tsd-index-link"><svg class="tsd-kind-icon" viewBox="0 0 24 24" aria-label="Property"><use href="../assets/icons.svg#icon-1024"></use></svg><span>max<wbr/>Document<wbr/>Bytes?</span></a>
+<a href="#middleware" class="tsd-index-link"><svg class="tsd-kind-icon" viewBox="0 0 24 24" aria-label="Property"><use href="../assets/icons.svg#icon-1024"></use></svg><span>middleware?</span></a>
+<a href="#parseoptions" class="tsd-index-link"><svg class="tsd-kind-icon" viewBox="0 0 24 24" aria-label="Property"><use href="../assets/icons.svg#icon-1024"></use></svg><span>parse<wbr/>Options?</span></a>
+<a href="#projectors" class="tsd-index-link"><svg class="tsd-kind-icon" viewBox="0 0 24 24" aria-label="Property"><use href="../assets/icons.svg#icon-1024"></use></svg><span>projectors?</span></a>
+<a href="#storage" class="tsd-index-link"><svg class="tsd-kind-icon" viewBox="0 0 24 24" aria-label="Property"><use href="../assets/icons.svg#icon-1024"></use></svg><span>storage</span></a>
+<a href="#watch" class="tsd-index-link"><svg class="tsd-kind-icon" viewBox="0 0 24 24" aria-label="Property"><use href="../assets/icons.svg#icon-1024"></use></svg><span>watch?</span></a>
+<a href="#writepolicy" class="tsd-index-link"><svg class="tsd-kind-icon" viewBox="0 0 24 24" aria-label="Property"><use href="../assets/icons.svg#icon-1024"></use></svg><span>write<wbr/>Policy?</span></a>
+</div></section></div></details></section></section>
+<details class="tsd-panel-group tsd-member-group tsd-accordion" open><summary class="tsd-accordion-summary" data-key="section-Properties"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><use href="../assets/icons.svg#icon-chevronDown"></use></svg>
+<h2 class="tsd-anchor-link" id="properties-1">Properties<a href="#properties-1" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h2></summary>
+<section>
+<section class="tsd-panel tsd-member">
+<h3 class="tsd-anchor-link" id="blocks"><code class="tsd-tag">Optional</code> <code class="tsd-tag">Readonly</code><span>blocks</span><a href="#blocks" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<div class="tsd-signature"><span class="tsd-kind-property">blocks</span><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-keyword">readonly</span> <a href="../types/Consumer_API.AnyBlockType.html" class="tsd-signature-type tsd-kind-type-alias">AnyBlockType</a><span class="tsd-signature-symbol">[]</span></div>
+<div class="tsd-comment tsd-typography"><p>Block types registered at construction; defaults to none.</p>
+</div><aside class="tsd-sources">
+<ul>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/f5572653a3364d62cc831110c6740fcb46e67d39/packages/core/src/engine/engine.ts#L176">packages/core/src/engine/engine.ts:176</a></li></ul></aside></section>
+<section class="tsd-panel tsd-member">
+<h3 class="tsd-anchor-link" id="clock"><code class="tsd-tag">Optional</code> <code class="tsd-tag">Readonly</code><span>clock</span><a href="#clock" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<div class="tsd-signature"><span class="tsd-kind-property">clock</span><span class="tsd-signature-symbol">?:</span> <a href="../types/Consumer_API.Clock.html" class="tsd-signature-type tsd-kind-type-alias">Clock</a></div>
+<div class="tsd-comment tsd-typography"><p>Timestamp source for events; defaults to the wall clock.</p>
+</div><aside class="tsd-sources">
+<ul>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/f5572653a3364d62cc831110c6740fcb46e67d39/packages/core/src/engine/engine.ts#L155">packages/core/src/engine/engine.ts:155</a></li></ul></aside></section>
+<section class="tsd-panel tsd-member">
+<h3 class="tsd-anchor-link" id="eventsink"><code class="tsd-tag">Optional</code> <code class="tsd-tag">Readonly</code><span>event<wbr/>Sink</span><a href="#eventsink" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<div class="tsd-signature"><span class="tsd-kind-property">eventSink</span><span class="tsd-signature-symbol">?:</span> <a href="Consumer_API.EventSink.html" class="tsd-signature-type tsd-kind-interface">EventSink</a></div>
+<div class="tsd-comment tsd-typography"><p>An event-sink override used for every append, ahead of
+<code>storage.defaultEventSink</code>. Subscribers still receive events appended
+through this sink.</p>
+</div><aside class="tsd-sources">
+<ul>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/f5572653a3364d62cc831110c6740fcb46e67d39/packages/core/src/engine/engine.ts#L166">packages/core/src/engine/engine.ts:166</a></li></ul></aside></section>
+<section class="tsd-panel tsd-member">
+<h3 class="tsd-anchor-link" id="includelimits"><code class="tsd-tag">Optional</code> <code class="tsd-tag">Readonly</code><span>include<wbr/>Limits</span><a href="#includelimits" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<div class="tsd-signature"><span class="tsd-kind-property">includeLimits</span><span class="tsd-signature-symbol">?:</span> <a href="Consumer_API.IncludeLimits.html" class="tsd-signature-type tsd-kind-interface">IncludeLimits</a></div>
+<div class="tsd-comment tsd-typography"><p>Bounds on include expansion per projection. The same document may be
+included in several places (<code>{{include:x}}</code>, <code>{{include:x#s}}</code>, or through
+different includers), and each place expands its own copy, so the merged
+tree can grow much faster than the documents behind it. Includes are
+admitted breadth-first (the board's own includes before anything nested in
+them) against three bounds: <code>maxNodes</code> included documents or sections
+(default 1,000), <code>maxBytes</code> of included source in UTF-8 (default 1 MiB),
+and <code>maxDepth</code> levels of nesting (default 64); the board document itself
+never counts. An include too large for the remaining <code>maxBytes</code> is skipped
+on its own and later includes that fit are still expanded; the first
+include past <code>maxNodes</code> or <code>maxDepth</code> stops expansion, together with every
+include not yet admitted. Skipped includes stay verbatim <code>{{include:…}}</code>
+text, documents reachable only through them are left out of the result's
+<code>versions</code>, and each kind of miss adds one <code>E_INCLUDE_LIMIT</code> diagnostic
+naming the first include it left out and the bound it hit. Each field is a
+non-negative integer or
+<code>Infinity</code>; any other value (or an unknown field) is a programming error
+and throws a <code>TypeError</code> at construction.</p>
+</div>
+<div class="tsd-comment tsd-typography">
+<div class="tsd-tag-example">
+<h4 class="tsd-anchor-link" id="example">Example<a href="#example" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h4><pre><code class="ts"><span class="hl-0">createEngine</span><span class="hl-1">({ </span><span class="hl-4">storage</span><span class="hl-1">, </span><span class="hl-4">includeLimits:</span><span class="hl-1"> { </span><span class="hl-4">maxNodes:</span><span class="hl-1"> </span><span class="hl-11">5_000</span><span class="hl-1"> } });</span>
+</code><button type="button">Copy</button></pre>
+
+</div></div><aside class="tsd-sources">
+<ul>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/f5572653a3364d62cc831110c6740fcb46e67d39/packages/core/src/engine/engine.ts#L222">packages/core/src/engine/engine.ts:222</a></li></ul></aside></section>
+<section class="tsd-panel tsd-member">
+<h3 class="tsd-anchor-link" id="lock"><code class="tsd-tag">Optional</code> <code class="tsd-tag">Readonly</code><span>lock</span><a href="#lock" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<div class="tsd-signature"><span class="tsd-kind-property">lock</span><span class="tsd-signature-symbol">?:</span> <a href="Consumer_API.Lock.html" class="tsd-signature-type tsd-kind-interface">Lock</a></div>
+<div class="tsd-comment tsd-typography"><p>A lock override used for every write, ahead of <code>storage.defaultLock</code>. When
+provided, all commits serialize through this one lock.</p>
+</div><aside class="tsd-sources">
+<ul>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/f5572653a3364d62cc831110c6740fcb46e67d39/packages/core/src/engine/engine.ts#L160">packages/core/src/engine/engine.ts:160</a></li></ul></aside></section>
+<section class="tsd-panel tsd-member">
+<h3 class="tsd-anchor-link" id="maxdocumentbytes"><code class="tsd-tag">Optional</code> <code class="tsd-tag">Readonly</code><span>max<wbr/>Document<wbr/>Bytes</span><a href="#maxdocumentbytes" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<div class="tsd-signature"><span class="tsd-kind-property">maxDocumentBytes</span><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">number</span></div>
+<div class="tsd-comment tsd-typography"><p>The largest document the engine will store or parse, in UTF-8 bytes
+(default <code>DEFAULT_MAX_DOCUMENT_BYTES</code>, 256 KiB). Parsing cost grows with
+document size, faster than linearly for some markdown, so the limit
+bounds the work one document can cause:</p>
+<ul>
+<li>a write (<code>write</code>, <code>patch</code>, <code>applyIntent</code>, <code>createDoc</code>) whose result would
+exceed it is rejected with reason <code>too-large</code> and an
+<code>E_DOCUMENT_TOO_LARGE</code> diagnostic, and nothing is stored;</li>
+<li>a stored document over it (written outside the engine) is never parsed:
+its projection comes back <code>ok: false</code> with that diagnostic, an include of
+it stays verbatim <code>{{include:…}}</code> text with that diagnostic, <code>getBlock</code>
+treats it as absent, patches and intents against it are rejected with
+reason <code>too-large</code>, and an external write of it is not evented. A
+full-text <code>write</code> that fits may still replace it.</li>
+</ul>
+<p><code>getDoc</code> still returns its raw source. The value is a non-negative integer
+or <code>Infinity</code>; anything else is a programming error and throws a
+<code>TypeError</code> at construction.</p>
+</div>
+<div class="tsd-comment tsd-typography">
+<div class="tsd-tag-example">
+<h4 class="tsd-anchor-link" id="example-1">Example<a href="#example-1" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h4><pre><code class="ts"><span class="hl-0">createEngine</span><span class="hl-1">({ </span><span class="hl-4">storage</span><span class="hl-1">, </span><span class="hl-4">maxDocumentBytes:</span><span class="hl-1"> </span><span class="hl-11">4</span><span class="hl-1"> * </span><span class="hl-11">1024</span><span class="hl-1"> * </span><span class="hl-11">1024</span><span class="hl-1"> });</span>
+</code><button type="button">Copy</button></pre>
+
+</div></div><aside class="tsd-sources">
+<ul>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/f5572653a3364d62cc831110c6740fcb46e67d39/packages/core/src/engine/engine.ts#L246">packages/core/src/engine/engine.ts:246</a></li></ul></aside></section>
+<section class="tsd-panel tsd-member">
+<h3 class="tsd-anchor-link" id="middleware"><code class="tsd-tag">Optional</code> <code class="tsd-tag">Readonly</code><span>middleware</span><a href="#middleware" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<div class="tsd-signature"><span class="tsd-kind-property">middleware</span><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-symbol">{</span><br/>    <span class="tsd-kind-property">projection</span><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-keyword">readonly</span> <a href="../types/Consumer_API.ProjectionMiddleware.html" class="tsd-signature-type tsd-kind-type-alias">ProjectionMiddleware</a><span class="tsd-signature-symbol">[]</span><span class="tsd-signature-symbol">;</span><br/>    <span class="tsd-kind-property">write</span><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-keyword">readonly</span> <a href="../types/Consumer_API.WriteMiddleware.html" class="tsd-signature-type tsd-kind-type-alias">WriteMiddleware</a><span class="tsd-signature-symbol">[]</span><span class="tsd-signature-symbol">;</span><br/><span class="tsd-signature-symbol">}</span></div>
+<div class="tsd-comment tsd-typography"><p>Middleware chains: <code>write</code> wraps the whole commit pipeline
+(amend/reject/observe), <code>projection</code> wraps the PROJECT stage's projector
+call (amend <code>options</code> before, transform <code>output</code> after). Neither may bypass
+pipeline stages. Absent or empty chains are no-ops.</p>
+</div>
+<div class="tsd-type-declaration">
+<h4>Type Declaration</h4>
+<ul class="tsd-parameters">
+<li class="tsd-parameter">
+<h5><code class="tsd-tag">Optional</code> <code class="tsd-tag">Readonly</code><span class="tsd-kind-property">projection</span><span class="tsd-signature-symbol">?: </span><span class="tsd-signature-keyword">readonly</span> <a href="../types/Consumer_API.ProjectionMiddleware.html" class="tsd-signature-type tsd-kind-type-alias">ProjectionMiddleware</a><span class="tsd-signature-symbol">[]</span></h5>
+<div class="tsd-comment tsd-typography"><p>Projection middleware, in outermost-first order.</p>
+</div></li>
+<li class="tsd-parameter">
+<h5><code class="tsd-tag">Optional</code> <code class="tsd-tag">Readonly</code><span class="tsd-kind-property">write</span><span class="tsd-signature-symbol">?: </span><span class="tsd-signature-keyword">readonly</span> <a href="../types/Consumer_API.WriteMiddleware.html" class="tsd-signature-type tsd-kind-type-alias">WriteMiddleware</a><span class="tsd-signature-symbol">[]</span></h5>
+<div class="tsd-comment tsd-typography"><p>Write middleware, in outermost-first order.</p>
+</div></li></ul></div><aside class="tsd-sources">
+<ul>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/f5572653a3364d62cc831110c6740fcb46e67d39/packages/core/src/engine/engine.ts#L185">packages/core/src/engine/engine.ts:185</a></li></ul></aside></section>
+<section class="tsd-panel tsd-member">
+<h3 class="tsd-anchor-link" id="parseoptions"><code class="tsd-tag">Optional</code> <code class="tsd-tag">Readonly</code><span>parse<wbr/>Options</span><a href="#parseoptions" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<div class="tsd-signature"><span class="tsd-kind-property">parseOptions</span><span class="tsd-signature-symbol">?:</span> <a href="Consumer_API.ParseOptions.html" class="tsd-signature-type tsd-kind-interface">ParseOptions</a></div>
+<div class="tsd-comment tsd-typography"><p>Parse options used throughout the engine. <code>blockTypes</code> is rarely needed:
+types passed via <a href="#blocks" class="tsd-kind-property">EngineOptions.blocks</a> or <code>engine.registerBlock</code> are
+recognized as fences automatically. The option only adds extra fence names
+on top of those (e.g. a fence whose type is not registered yet).</p>
+</div><aside class="tsd-sources">
+<ul>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/f5572653a3364d62cc831110c6740fcb46e67d39/packages/core/src/engine/engine.ts#L197">packages/core/src/engine/engine.ts:197</a></li></ul></aside></section>
+<section class="tsd-panel tsd-member">
+<h3 class="tsd-anchor-link" id="projectors"><code class="tsd-tag">Optional</code> <code class="tsd-tag">Readonly</code><span>projectors</span><a href="#projectors" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<div class="tsd-signature"><span class="tsd-kind-property">projectors</span><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-keyword">readonly</span> <a href="Consumer_API.Projector.html" class="tsd-signature-type tsd-kind-interface">Projector</a><span class="tsd-signature-symbol">&lt;</span><span class="tsd-signature-type">unknown</span><span class="tsd-signature-symbol">&gt;</span><span class="tsd-signature-symbol">[]</span></div>
+<div class="tsd-comment tsd-typography"><p>Projectors registered at construction. Defaults to <code>[textProjector]</code> — the
+only built-in default. Passing this option <em>replaces</em> that default, so
+include <a href="../variables/Consumer_API.textProjector.html" class="tsd-kind-variable">textProjector</a> explicitly to keep it; every other projector
+(<code>htmlProjector</code> from <code>@onioneko/boardkit-html</code>, or your own) is registered here or
+through <a href="Consumer_API.Engine.html#registerprojector" class="tsd-kind-method">Engine.registerProjector</a>.</p>
+</div><aside class="tsd-sources">
+<ul>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/f5572653a3364d62cc831110c6740fcb46e67d39/packages/core/src/engine/engine.ts#L174">packages/core/src/engine/engine.ts:174</a></li></ul></aside></section>
+<section class="tsd-panel tsd-member">
+<h3 class="tsd-anchor-link" id="storage"><code class="tsd-tag">Readonly</code><span>storage</span><a href="#storage" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<div class="tsd-signature"><span class="tsd-kind-property">storage</span><span class="tsd-signature-symbol">:</span> <a href="Consumer_API.Storage.html" class="tsd-signature-type tsd-kind-interface">Storage</a></div>
+<div class="tsd-comment tsd-typography"><p>Where document bytes live (required).</p>
+</div><aside class="tsd-sources">
+<ul>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/f5572653a3364d62cc831110c6740fcb46e67d39/packages/core/src/engine/engine.ts#L153">packages/core/src/engine/engine.ts:153</a></li></ul></aside></section>
+<section class="tsd-panel tsd-member">
+<h3 class="tsd-anchor-link" id="watch"><code class="tsd-tag">Optional</code> <code class="tsd-tag">Readonly</code><span>watch</span><a href="#watch" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<div class="tsd-signature"><span class="tsd-kind-property">watch</span><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">boolean</span> <span class="tsd-signature-symbol">|</span> <a href="Consumer_API.WatchOptions.html" class="tsd-signature-type tsd-kind-interface">WatchOptions</a></div>
+<div class="tsd-comment tsd-typography"><p>Enable external-write watching. <code>true</code> resolves the root from
+<code>storage.rootDir</code> (set by filesystem storage); a <a href="Consumer_API.WatchOptions.html" class="tsd-kind-interface">WatchOptions</a> object
+pins <code>rootDir</code>/<code>source</code>/writer id. Absent or <code>false</code> disables watching.
+<code>watch: true</code> with a storage that has no <code>rootDir</code> (e.g. <code>createMemStorage</code>)
+is a programming error and throws a <code>TypeError</code> — pass a <code>WatchOptions</code>
+object with an explicit <code>rootDir</code> (and a <code>source</code>) to watch a non-fs
+workspace.</p>
+</div><aside class="tsd-sources">
+<ul>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/f5572653a3364d62cc831110c6740fcb46e67d39/packages/core/src/engine/engine.ts#L256">packages/core/src/engine/engine.ts:256</a></li></ul></aside></section>
+<section class="tsd-panel tsd-member">
+<h3 class="tsd-anchor-link" id="writepolicy"><code class="tsd-tag">Optional</code> <code class="tsd-tag">Readonly</code><span>write<wbr/>Policy</span><a href="#writepolicy" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
+<div class="tsd-signature"><span class="tsd-kind-property">writePolicy</span><span class="tsd-signature-symbol">?:</span> <a href="Consumer_API.WritePolicy.html" class="tsd-signature-type tsd-kind-interface">WritePolicy</a></div>
+<div class="tsd-comment tsd-typography"><p>Write-domain policy; absent means allow-all.</p>
+</div><aside class="tsd-sources">
+<ul>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/f5572653a3364d62cc831110c6740fcb46e67d39/packages/core/src/engine/engine.ts#L178">packages/core/src/engine/engine.ts:178</a></li></ul></aside></section></section></details></div>
+<div class="col-sidebar">
+<div class="page-menu">
+<div class="tsd-navigation settings">
+<details class="tsd-accordion"><summary class="tsd-accordion-summary"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><use href="../assets/icons.svg#icon-chevronDown"></use></svg>
+<h3>Settings</h3></summary>
+<div class="tsd-accordion-details">
+<div class="tsd-filter-visibility"><span class="settings-label">Member Visibility</span>
+<ul id="tsd-filter-options">
+<li class="tsd-filter-item"><label class="tsd-filter-input"><input type="checkbox" id="tsd-filter-protected" name="protected"/><svg width="32" height="32" viewBox="0 0 32 32" aria-hidden="true"><rect class="tsd-checkbox-background" width="30" height="30" x="1" y="1" rx="6" fill="none"></rect><path class="tsd-checkbox-checkmark" d="M8.35422 16.8214L13.2143 21.75L24.6458 10.25" stroke="none" stroke-width="3.5" stroke-linejoin="round" fill="none"></path></svg><span>Protected</span></label></li>
+<li class="tsd-filter-item"><label class="tsd-filter-input"><input type="checkbox" id="tsd-filter-inherited" name="inherited" checked/><svg width="32" height="32" viewBox="0 0 32 32" aria-hidden="true"><rect class="tsd-checkbox-background" width="30" height="30" x="1" y="1" rx="6" fill="none"></rect><path class="tsd-checkbox-checkmark" d="M8.35422 16.8214L13.2143 21.75L24.6458 10.25" stroke="none" stroke-width="3.5" stroke-linejoin="round" fill="none"></path></svg><span>Inherited</span></label></li>
+<li class="tsd-filter-item"><label class="tsd-filter-input"><input type="checkbox" id="tsd-filter-external" name="external"/><svg width="32" height="32" viewBox="0 0 32 32" aria-hidden="true"><rect class="tsd-checkbox-background" width="30" height="30" x="1" y="1" rx="6" fill="none"></rect><path class="tsd-checkbox-checkmark" d="M8.35422 16.8214L13.2143 21.75L24.6458 10.25" stroke="none" stroke-width="3.5" stroke-linejoin="round" fill="none"></path></svg><span>External</span></label></li></ul></div>
+<div class="tsd-theme-toggle"><label class="settings-label" for="tsd-theme">Theme</label><select id="tsd-theme"><option value="os">OS</option><option value="light">Light</option><option value="dark">Dark</option></select></div></div></details></div>
+<details open class="tsd-accordion tsd-page-navigation"><summary class="tsd-accordion-summary"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><use href="../assets/icons.svg#icon-chevronDown"></use></svg>
+<h3>On This Page</h3></summary>
+<div class="tsd-accordion-details">
+<details open class="tsd-accordion tsd-page-navigation-section"><summary class="tsd-accordion-summary" data-key="section-Properties"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><use href="../assets/icons.svg#icon-chevronDown"></use></svg>Properties</summary>
+<div><a href="#blocks"><svg class="tsd-kind-icon" viewBox="0 0 24 24" aria-label="Property"><use href="../assets/icons.svg#icon-1024"></use></svg><span>blocks</span></a><a href="#clock"><svg class="tsd-kind-icon" viewBox="0 0 24 24" aria-label="Property"><use href="../assets/icons.svg#icon-1024"></use></svg><span>clock</span></a><a href="#eventsink"><svg class="tsd-kind-icon" viewBox="0 0 24 24" aria-label="Property"><use href="../assets/icons.svg#icon-1024"></use></svg><span>event<wbr/>Sink</span></a><a href="#includelimits"><svg class="tsd-kind-icon" viewBox="0 0 24 24" aria-label="Property"><use href="../assets/icons.svg#icon-1024"></use></svg><span>include<wbr/>Limits</span></a><a href="#lock"><svg class="tsd-kind-icon" viewBox="0 0 24 24" aria-label="Property"><use href="../assets/icons.svg#icon-1024"></use></svg><span>lock</span></a><a href="#maxdocumentbytes"><svg class="tsd-kind-icon" viewBox="0 0 24 24" aria-label="Property"><use href="../assets/icons.svg#icon-1024"></use></svg><span>max<wbr/>Document<wbr/>Bytes</span></a><a href="#middleware"><svg class="tsd-kind-icon" viewBox="0 0 24 24" aria-label="Property"><use href="../assets/icons.svg#icon-1024"></use></svg><span>middleware</span></a><a href="#parseoptions"><svg class="tsd-kind-icon" viewBox="0 0 24 24" aria-label="Property"><use href="../assets/icons.svg#icon-1024"></use></svg><span>parse<wbr/>Options</span></a><a href="#projectors"><svg class="tsd-kind-icon" viewBox="0 0 24 24" aria-label="Property"><use href="../assets/icons.svg#icon-1024"></use></svg><span>projectors</span></a><a href="#storage"><svg class="tsd-kind-icon" viewBox="0 0 24 24" aria-label="Property"><use href="../assets/icons.svg#icon-1024"></use></svg><span>storage</span></a><a href="#watch"><svg class="tsd-kind-icon" viewBox="0 0 24 24" aria-label="Property"><use href="../assets/icons.svg#icon-1024"></use></svg><span>watch</span></a><a href="#writepolicy"><svg class="tsd-kind-icon" viewBox="0 0 24 24" aria-label="Property"><use href="../assets/icons.svg#icon-1024"></use></svg><span>write<wbr/>Policy</span></a></div></details></div></details></div>
+<div class="site-menu">
+<nav class="tsd-navigation"><a href="../modules.html">boardkit - v0.0.0</a>
+<ul class="tsd-small-nested-navigation" id="tsd-nav-container">
+<li>Loading...</li></ul></nav></div></div></div><footer>
+<p class="tsd-generator">Generated using <a href="https://typedoc.org/" target="_blank">TypeDoc</a></p></footer>
+<div class="overlay"></div></body></html>

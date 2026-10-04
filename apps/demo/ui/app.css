@@ -1,0 +1,191 @@
+:root {
+  --bg: #fbfaf8;
+  --panel: #ffffff;
+  --ink: #1b1a17;
+  --dim: #6d6a63;
+  --rule: #ddd8cf;
+  --accent: #7a5a2f;
+  --bad: #a03024;
+  --good: #2f6b3a;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #16150f;
+    --panel: #1e1d16;
+    --ink: #eae6dc;
+    --dim: #9a948a;
+    --rule: #34322a;
+    --accent: #d8b36a;
+    --bad: #e08076;
+    --good: #8fd0a0;
+  }
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font:
+    14px / 1.5 ui-sans-serif,
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    sans-serif;
+}
+header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: center;
+  padding: 0.6rem 1rem;
+  border-bottom: 1px solid var(--rule);
+  background: var(--panel);
+}
+header h1 {
+  font-size: 1rem;
+  margin: 0;
+  letter-spacing: 0.02em;
+}
+.workspace {
+  color: var(--dim);
+  font-family: ui-monospace, monospace;
+  font-size: 0.8rem;
+}
+.spacer {
+  flex: 1;
+}
+button,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  padding: 0.2rem 0.5rem;
+}
+button {
+  cursor: pointer;
+}
+button.on {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+main {
+  display: grid;
+  grid-template-columns: 12rem minmax(0, 1fr) 20rem;
+  gap: 1px;
+  background: var(--rule);
+  min-height: calc(100vh - 3rem);
+}
+main > * {
+  background: var(--bg);
+  padding: 0.8rem;
+  overflow: auto;
+}
+@media (max-width: 60rem) {
+  main {
+    grid-template-columns: 1fr;
+  }
+}
+nav button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: none;
+}
+nav button.on {
+  color: var(--accent);
+  font-weight: 600;
+}
+.tabs {
+  display: flex;
+  gap: 0.4rem;
+  margin-bottom: 0.8rem;
+}
+.pane[hidden] {
+  display: none;
+}
+textarea {
+  width: 100%;
+  min-height: 24rem;
+  font-family: ui-monospace, monospace;
+}
+pre {
+  white-space: pre-wrap;
+  font-family: ui-monospace, monospace;
+}
+#banner {
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  padding: 0.4rem 0.6rem;
+  margin-bottom: 0.8rem;
+}
+#diags {
+  color: var(--bad);
+  font-family: ui-monospace, monospace;
+  font-size: 0.8rem;
+  margin: 0.8rem 0 0;
+}
+#diags[hidden] {
+  display: none;
+}
+#banner.bad {
+  border-color: var(--bad);
+  color: var(--bad);
+}
+#banner.good {
+  border-color: var(--good);
+  color: var(--good);
+}
+.stale {
+  color: var(--bad);
+  border-color: var(--bad);
+  margin-left: 0.6rem;
+}
+h2 {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--dim);
+  margin: 0.4rem 0;
+}
+ol {
+  list-style: none;
+  margin: 0 0 1rem;
+  padding: 0;
+  font-size: 0.8rem;
+}
+ol li {
+  border-top: 1px solid var(--rule);
+  padding: 0.3rem 0;
+}
+ol li .by {
+  color: var(--dim);
+}
+#rejections li {
+  color: var(--bad);
+}
+/* Provenance is visible, not narrated: an expanded include says where it came from. */
+section[data-doc] {
+  border-left: 3px solid var(--rule);
+  padding-left: 0.8rem;
+  margin: 1rem 0;
+}
+section[data-doc]::before {
+  content: "from " attr(data-doc);
+  display: block;
+  font-size: 0.72rem;
+  color: var(--dim);
+  font-family: ui-monospace, monospace;
+}
+section[data-doc][data-section]::before {
+  content: "from " attr(data-doc) "#" attr(data-section);
+}
+[data-intent] {
+  cursor: pointer;
+}
