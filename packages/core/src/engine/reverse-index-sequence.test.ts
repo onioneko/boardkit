@@ -191,6 +191,9 @@ async function run(seed: number, steps: number, mode: Mode = "v1"): Promise<void
     await check(`${mode} seed ${seed} end`);
   }
   await engine.close();
+  // In-memory storage resolves every await as a microtask: give the test
+  // worker's own messages a turn between runs.
+  await new Promise((resolve) => setImmediate(resolve));
 
   function subscribe(id: string): void {
     if (subscribed.has(asDocId(id))) return;
@@ -416,6 +419,8 @@ const PENDING_REGRESSION_SEEDS = [914];
  */
 const FULL_SEEDS = Number(process.env.BOARDKIT_SEQUENCE_SEEDS ?? 200);
 const FULL_STEPS = Number(process.env.BOARDKIT_SEQUENCE_STEPS ?? 60);
+/** Seeds per test. */
+const CHUNK = 50;
 
 describe("the reverse include index and the seeded parse cache match a rebuild", () => {
   for (const seed of FULL_REGRESSION_SEEDS) {
@@ -433,23 +438,29 @@ describe("the reverse include index and the seeded parse cache match a rebuild",
       await run(seed, 40, "v1");
     });
   }
-  it(
-    `random runs, ${FULL_SEEDS} seeds of ${FULL_STEPS} steps, all operations`,
-    async () => {
-      for (let seed = 1; seed <= FULL_SEEDS; seed += 1) await run(seed, FULL_STEPS, "full");
-    },
-    Math.max(120_000, FULL_SEEDS * FULL_STEPS * 10),
-  );
-  // Pending runs check only some steps, so they are cheaper: twice the seeds.
-  it(
-    `random runs, ${2 * FULL_SEEDS} seeds of ${FULL_STEPS} steps, with pending watch events`,
-    async () => {
-      for (let seed = 1; seed <= 2 * FULL_SEEDS; seed += 1) {
-        await run(seed, FULL_STEPS, "pending");
-      }
-    },
-    Math.max(120_000, 2 * FULL_SEEDS * FULL_STEPS * 10),
-  );
+  // In chunks of CHUNK seeds: one long test starves the test worker's
+  // progress reports.
+  for (let first = 1; first <= FULL_SEEDS; first += CHUNK) {
+    const last = Math.min(FULL_SEEDS, first + CHUNK - 1);
+    it(
+      `random runs, seeds ${first}–${last} of ${FULL_STEPS} steps, all operations`,
+      async () => {
+        for (let seed = first; seed <= last; seed += 1) await run(seed, FULL_STEPS, "full");
+      },
+      Math.max(60_000, CHUNK * FULL_STEPS * 20),
+    );
+  }
+  // Pending runs check delivery on only some steps, so they are cheaper: twice the seeds.
+  for (let first = 1; first <= 2 * FULL_SEEDS; first += CHUNK) {
+    const last = Math.min(2 * FULL_SEEDS, first + CHUNK - 1);
+    it(
+      `random runs, seeds ${first}–${last} of ${FULL_STEPS} steps, with pending watch events`,
+      async () => {
+        for (let seed = first; seed <= last; seed += 1) await run(seed, FULL_STEPS, "pending");
+      },
+      Math.max(60_000, CHUNK * FULL_STEPS * 20),
+    );
+  }
 });
 
 describe("a commit that lands while the index is being rebuilt", () => {
