@@ -954,7 +954,14 @@ export function createEngine(opts: EngineOptions): Engine {
       : {}),
     ...(opts.storage.rootDir !== undefined ? { rootDir: opts.storage.rootDir } : {}),
     ...(opts.storage.delete !== undefined
-      ? { delete: (docId: DocId) => (opts.storage.delete as (d: DocId) => Promise<void>)(docId) }
+      ? {
+          // A removal forgets the self-echo record, so the same bytes coming
+          // back from outside are an external write.
+          delete: async (docId: DocId) => {
+            await (opts.storage.delete as (d: DocId) => Promise<void>)(docId);
+            externalHandler?.recordRemoved(docId);
+          },
+        }
       : {}),
     ...(defaultLockFn !== undefined ? { defaultLock: defaultLockFn } : {}),
     ...(sink !== undefined ? { defaultEventSink: () => sink } : {}),

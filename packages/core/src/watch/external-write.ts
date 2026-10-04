@@ -110,6 +110,15 @@ export interface ExternalWriteHandler {
    */
   recordCommitted(docId: DocId, src: string): void;
   /**
+   * Forget everything recorded for a document that was deleted, so that the
+   * same bytes reappearing later (a `git checkout`, an editor's undo) are
+   * handled as an external write, not suppressed as a self-echo. The engine
+   * calls this when its own removal lands; `handle` does it itself when it
+   * finds the document gone.
+   * @param docId The document that was deleted.
+   */
+  recordRemoved(docId: DocId): void;
+  /**
    * Handle one watch notification.
    * @param watchPath The filesystem path the watcher reported.
    * @returns The outcome, or `undefined` when the path is outside `rootDir` or not a markdown file.
@@ -172,6 +181,12 @@ export function createExternalWriteHandler(deps: ExternalWriteDeps): ExternalWri
       lastSrc.set(docId, src);
     },
 
+    recordRemoved(docId) {
+      lastVersion.delete(docId);
+      lastTree.delete(docId);
+      lastSrc.delete(docId);
+    },
+
     async handle(watchPath) {
       const docId = toDocId(watchPath);
       if (docId === undefined) return undefined;
@@ -186,7 +201,14 @@ export function createExternalWriteHandler(deps: ExternalWriteDeps): ExternalWri
         if (code === "E_PATH_OUTSIDE_ROOT" || code === "E_INVALID_ID") return undefined;
         throw err;
       }
-      if (src === undefined) return undefined; // deleted outside the pipeline; nothing to event
+      if (src === undefined) {
+        // Deleted outside the pipeline: nothing to event, but nothing recorded
+        // for it holds any more.
+        lastVersion.delete(docId);
+        lastTree.delete(docId);
+        lastSrc.delete(docId);
+        return undefined;
+      }
       const version = docVersion(src);
       if (lastVersion.get(docId) === version) {
         return { docId, suppressed: true, external: false, events: [], diagnostics: [] };

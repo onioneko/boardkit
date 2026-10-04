@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
+import type { BlockType } from "../blocks/types.js";
 import { buildReverseIndex, resolveIncludes } from "../link/graph.js";
 import { asDocId, type DocId } from "../model/ids.js";
-import { createMemStorage } from "../ports/mem.js";
-import type { EventRecord } from "../ports/ports.js";
+import { createMemStorage, type MemStorage } from "../ports/mem.js";
+import type { EventRecord, Storage } from "../ports/ports.js";
 import type { WatchSource } from "../watch/source.js";
 import { createEngine } from "./engine.js";
 
@@ -58,59 +59,217 @@ const silentSource: WatchSource = {
   },
 };
 
-async function run(seed: number, steps: number): Promise<void> {
+/** A block type with an affordance, so runs can patch and apply intents. */
+const boxType: BlockType = {
+  type: "box",
+  schema: {
+    type: "object",
+    required: ["id", "n"],
+    properties: { id: { type: "string" }, n: { type: "number" } },
+  },
+  affordances: [{ name: "bump", patch: (attrs) => ({ n: Number(attrs.n) + 1 }) }],
+};
+/** Registered part-way through a run. */
+const lateType: BlockType = {
+  type: "late",
+  schema: { type: "object", required: ["id"], properties: { id: { type: "string" } } },
+};
+/** The size limit in `full` runs: small enough for documents to cross it. */
+const FULL_MAX_BYTES = 600;
+
+/** `full` runs: documents may carry blocks, a `late` fence, or padding past the size limit. */
+function contentFull(rand: () => number, id: string, mayBeBig: boolean): string {
+  const base = content(rand, id);
+  const extra: string[] = [];
+  if (rand() < 0.3) extra.push("```box", `id: ${id}box`, `n: ${Math.floor(rand() * 5)}`, "```", "");
+  if (rand() < 0.2) extra.push("```late", `id: ${id}late`, "```", "");
+  if (mayBeBig && rand() < 0.2) extra.push("pad ".repeat(200), "");
+  return `${base}${extra.join("\n")}`;
+}
+
+/** Storage whose reads of the documents in `failing` throw, as a flaky disk would. */
+function flaky(inner: MemStorage): { storage: Storage; failing: Set<string> } {
+  const failing = new Set<string>();
+  return {
+    failing,
+    storage: {
+      ...inner,
+      read: async (docId: DocId) => {
+        if (failing.has(docId)) throw Object.assign(new Error("EIO"), { code: "EIO" });
+        return inner.read(docId);
+      },
+    },
+  };
+}
+
+type Mode = "v1" | "full";
+
+/**
+ * One seeded run. `v1` is the original generator, kept unchanged so that the
+ * seeds a review found keep replaying the same steps. `full` adds removal and
+ * same-bytes restore, out-of-band edits under an engine write, patches and
+ * intents, a block registered mid-run, documents past the size limit,
+ * interleaved writes, and transient read errors.
+ */
+async function run(seed: number, steps: number, mode: Mode = "v1"): Promise<void> {
   const rand = prng(seed);
   const storage = createMemStorage();
-  const engine = createEngine({ storage, clock, watch: { rootDir: "/ws", source: silentSource } });
+  const { storage: engineStorage, failing } = flaky(storage);
+  const blocks: BlockType[] = mode === "full" ? [boxType] : [];
+  const limits = mode === "full" ? { maxDocumentBytes: FULL_MAX_BYTES } : {};
+  const engine = createEngine({
+    storage: engineStorage,
+    clock,
+    blocks: [...blocks],
+    ...limits,
+    watch: { rootDir: "/ws", source: silentSource },
+  });
   const subscribed = new Map<DocId, () => void>();
   const delivered = new Map<DocId, EventRecord[]>();
   const exists = async (id: string) => (await storage.read(asDocId(id))) !== undefined;
+  const pickDoc = () => DOCS[Math.floor(rand() * DOCS.length)] as string;
 
   for (let step = 0; step < steps; step += 1) {
-    const id = DOCS[Math.floor(rand() * DOCS.length)] as string;
-    const op = Math.floor(rand() * 9);
-    const label = `seed ${seed} step ${step}`;
-    if (op <= 1) {
-      if (await exists(id)) {
-        const r = await engine.write(id, { writer, fullText: content(rand, id) });
-        expect(r.ok, label).toBe(true);
+    const id = pickDoc();
+    const label = `${mode} seed ${seed} step ${step}`;
+    if (mode === "v1") {
+      const op = Math.floor(rand() * 9);
+      if (op <= 1) {
+        if (await exists(id)) {
+          const r = await engine.write(id, { writer, fullText: content(rand, id) });
+          expect(r.ok, label).toBe(true);
+        } else {
+          const r = await engine.createDoc(id, { writer, content: content(rand, id) });
+          expect(r.ok, label).toBe(true);
+        }
+      } else if (op === 2) {
+        if (!(await exists(id))) {
+          const r = await engine.importDoc(id, { writer, content: content(rand, id) });
+          expect(r.ok, label).toBe(true);
+        }
+      } else if (op === 3) {
+        if (await exists(id)) expect((await engine.removeDoc(id, { writer })).ok, label).toBe(true);
+      } else if (op === 4) {
+        // Written behind the engine's back, then reported by the watcher.
+        await storage.writeAtomic(asDocId(id), content(rand, id));
+        await engine.externalWrite(`/ws/${id}.md`);
+      } else if (op === 5) {
+        await storage.delete?.(asDocId(id));
+        await engine.externalWrite(`/ws/${id}.md`);
+      } else if (op <= 7) {
+        subscribe(id);
       } else {
-        const r = await engine.createDoc(id, { writer, content: content(rand, id) });
-        expect(r.ok, label).toBe(true);
+        unsubscribe(id);
       }
+    } else {
+      await fullStep(id, label);
+    }
+    await check(label);
+  }
+  await engine.close();
+
+  function subscribe(id: string): void {
+    if (subscribed.has(asDocId(id))) return;
+    const events: EventRecord[] = [];
+    delivered.set(asDocId(id), events);
+    subscribed.set(
+      asDocId(id),
+      engine.subscribe(id, (evt) => events.push(evt)),
+    );
+  }
+
+  function unsubscribe(id: string): void {
+    subscribed.get(asDocId(id))?.();
+    subscribed.delete(asDocId(id));
+    delivered.delete(asDocId(id));
+  }
+
+  async function fullStep(id: string, label: string): Promise<void> {
+    const op = Math.floor(rand() * 16);
+    const src = await storage.read(asDocId(id));
+    if (op <= 1) {
+      const text = contentFull(rand, id, false);
+      const r =
+        src === undefined
+          ? await engine.createDoc(id, { writer, content: text })
+          : await engine.write(id, { writer, fullText: text });
+      expect(r.ok || (!r.ok && r.rejection.reason === "too-large"), label).toBe(true);
     } else if (op === 2) {
-      if (!(await exists(id))) {
-        const r = await engine.importDoc(id, { writer, content: content(rand, id) });
+      if (src === undefined) {
+        const r = await engine.importDoc(id, {
+          writer,
+          content: contentFull(rand, id, true),
+          ignoreSizeLimit: true,
+        });
         expect(r.ok, label).toBe(true);
       }
     } else if (op === 3) {
-      if (await exists(id)) expect((await engine.removeDoc(id, { writer })).ok, label).toBe(true);
+      if (src !== undefined) expect((await engine.removeDoc(id, { writer })).ok, label).toBe(true);
     } else if (op === 4) {
-      // Written behind the engine's back, then reported by the watcher.
-      await storage.writeAtomic(asDocId(id), content(rand, id));
+      await storage.writeAtomic(asDocId(id), contentFull(rand, id, true));
       await engine.externalWrite(`/ws/${id}.md`);
     } else if (op === 5) {
       await storage.delete?.(asDocId(id));
       await engine.externalWrite(`/ws/${id}.md`);
     } else if (op <= 7) {
-      if (!subscribed.has(asDocId(id))) {
-        const events: EventRecord[] = [];
-        delivered.set(asDocId(id), events);
-        subscribed.set(
-          asDocId(id),
-          engine.subscribe(id, (evt) => events.push(evt)),
+      subscribe(id);
+    } else if (op === 8) {
+      unsubscribe(id);
+    } else if (op === 9) {
+      // Removed, then put back byte for byte from outside (git checkout, undo).
+      if (src !== undefined) {
+        expect((await engine.removeDoc(id, { writer })).ok, label).toBe(true);
+        await storage.writeAtomic(asDocId(id), src);
+        await engine.externalWrite(`/ws/${id}.md`);
+      }
+    } else if (op === 10) {
+      // An edit in storage the watcher has not reported, then an engine write
+      // that keeps its shape; the report (a self-echo by then) may follow.
+      if (src !== undefined) {
+        const pending = contentFull(rand, id, false);
+        await storage.writeAtomic(asDocId(id), pending);
+        await engine.write(id, { writer, fullText: probed(pending) });
+        if (rand() < 0.5) await engine.externalWrite(`/ws/${id}.md`);
+      }
+    } else if (op === 11) {
+      if (rand() < 0.5) {
+        await engine.patch(id, `${id}box`, { writer, attrs: { n: Math.floor(rand() * 9) } });
+      } else {
+        await engine.applyIntent(
+          { docId: id, blockId: `${id}box`, affordance: "bump" },
+          { writer },
         );
       }
+    } else if (op === 12) {
+      if (!blocks.includes(lateType)) {
+        blocks.push(lateType);
+        engine.registerBlock(lateType);
+      }
+    } else if (op === 13) {
+      const other = pickDoc();
+      await Promise.all([
+        engine.write(id, { writer, fullText: contentFull(rand, id, false) }),
+        engine.write(other, { writer, fullText: contentFull(rand, other, false) }),
+      ]);
     } else {
-      subscribed.get(asDocId(id))?.();
-      subscribed.delete(asDocId(id));
-      delivered.delete(asDocId(id));
+      // A transient read error during a rebuild, which a write to another
+      // document triggers; reads recover before the checks.
+      const other = pickDoc();
+      const otherSrc = await storage.read(asDocId(other));
+      failing.add(id);
+      if (other !== id && otherSrc !== undefined) {
+        await engine.write(other, { writer, fullText: probed(otherSrc) });
+      }
+      failing.clear();
     }
+  }
 
+  async function check(label: string): Promise<void> {
     // The reference: a from-scratch index over current storage.
+    const parseOptions = { blockTypes: new Set(blocks.map((b) => b.type)) };
     const edges = [];
     for (const s of subscribed.keys()) {
-      edges.push(...(await resolveIncludes(s, storage)).includes);
+      edges.push(...(await resolveIncludes(s, storage, parseOptions, limits)).includes);
     }
     const index = buildReverseIndex(edges);
     const recipients = (doc: DocId): Set<DocId> => {
@@ -133,7 +292,11 @@ async function run(seed: number, steps: number): Promise<void> {
       if (src === undefined) continue;
       for (const events of delivered.values()) events.length = 0;
       const r = await engine.write(doc, { writer, fullText: probed(src) });
-      expect(r.ok, `${label} probe ${doc}`).toBe(true);
+      if (!r.ok) {
+        // Only a document past the size limit may refuse its probe.
+        expect(r.rejection.reason, `${label} probe ${doc}`).toBe("too-large");
+        continue;
+      }
       const want = [...subscribed.keys()].filter((s) => recipients(asDocId(doc)).has(s)).sort();
       const got = [...delivered.entries()]
         .filter(([, events]) => events.some((e) => e.docId === doc))
@@ -142,21 +305,31 @@ async function run(seed: number, steps: number): Promise<void> {
       expect(got, `${label} probe ${doc}`).toEqual(want);
     }
 
-    // Every projection matches a cache-free engine's.
-    const fresh = createEngine({ storage, clock });
+    // Every projection and block matches a cache-free engine's.
+    const fresh = createEngine({ storage, clock, blocks: [...blocks], ...limits });
     for (const doc of DOCS) {
       const mine = await engine.projection(doc, "text", {});
       const theirs = await fresh.projection(doc, "text", {});
       expect(mine, `${label} projection ${doc}`).toEqual(theirs);
+      for (const blockId of [`${doc}box`, `${doc}late`]) {
+        expect(await engine.getBlock(doc, blockId), `${label} block ${blockId}`).toEqual(
+          await fresh.getBlock(doc, blockId),
+        );
+      }
     }
   }
-  await engine.close();
 }
 
+/**
+ * Seeds a review found failing (C1, a removed document restored with the
+ * same bytes), at the step count it used. They replay the `v1` generator.
+ */
+const REGRESSION_SEEDS = [26, 41, 158, 216, 499, 606, 805, 893];
+
 describe("the incremental reverse index and the seeded parse cache match a rebuild", () => {
-  for (let seed = 1; seed <= 24; seed += 1) {
-    it(`random run, seed ${seed}`, async () => {
-      await run(seed, 24);
+  for (const seed of REGRESSION_SEEDS) {
+    it(`regression seed ${seed} (v1, 40 steps)`, async () => {
+      await run(seed, 40, "v1");
     });
   }
 });
