@@ -3,6 +3,7 @@ import type { Heading, Root, RootContent } from "mdast";
 import { describe, expect, it } from "vitest";
 import type { ParsedDoc, Section } from "../model/doc.js";
 import { asSectionId } from "../model/ids.js";
+import { DEFAULT_COMPLEXITY_LIMITS, documentComplexityDiagnostic } from "./complexity.js";
 import { parseDoc } from "./pipeline.js";
 import { extractRefs, type RefHit } from "./refs.js";
 import { extractSections, refsBySection, type SectionSpan } from "./sections.js";
@@ -165,4 +166,33 @@ describe("parse scaling", () => {
     expect(doc.diagnostics).toEqual([]);
     expect(ms).toBeLessThan(3000);
   }, 120_000);
+
+  it("refuses the hostile shapes from the parser-cost report before parsing, in linear time", () => {
+    const size = 64 * 1024;
+    const fill = (unit: string, tail = ""): string =>
+      unit.repeat(Math.floor((size - tail.length) / unit.length)) + tail;
+    let deepList = "";
+    for (let i = 0; deepList.length < size; i += 1) deepList += `${"  ".repeat(i)}- x\n`;
+    const hostile: Record<string, string> = {
+      "deep multi-line list": deepList.slice(0, size),
+      "one-line blockquote": fill(">", " x\n"),
+      "one-line list": fill("- ", "x\n"),
+      "one-line list and quote": fill("- > ", "x\n"),
+      "emphasis runs": `${"*".repeat(size / 2)}a${"*".repeat(size / 2)}\n`,
+      "nested brackets": `${fill("[", "x")}${"](u)".repeat(8)}\n`,
+    };
+    const prose = fill("lorem ipsum dolor sit amet\n");
+    const scan = (src: string) =>
+      documentComplexityDiagnostic("d", src, DEFAULT_COMPLEXITY_LIMITS, "write");
+    for (let k = 0; k < 3; k += 1) scan(prose); // warm up
+    const baseline = Math.max(timed(() => scan(prose)).ms, 0.5);
+    for (const [shape, src] of Object.entries(hostile)) {
+      expect(src.length, shape).toBeGreaterThanOrEqual(size - 64);
+      const { value, ms } = timed(() => scan(src));
+      expect({ shape, code: value?.code }).toEqual({ shape, code: "E_DOCUMENT_TOO_COMPLEX" });
+      // The scan stops at the first bound exceeded, so a refusal never costs
+      // more than scanning ordinary prose of the same size.
+      expect(ms / baseline, shape).toBeLessThan(10);
+    }
+  });
 });
