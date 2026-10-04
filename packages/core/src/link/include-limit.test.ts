@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { createEngine } from "../engine/engine.js";
-import { asDocId } from "../model/ids.js";
+import type { ParsedDoc } from "../model/doc.js";
+import { asDocId, type DocId } from "../model/ids.js";
+import { parseDoc } from "../parse/pipeline.js";
 import { createMemStorage } from "../ports/mem.js";
 import type { Storage } from "../ports/ports.js";
 import { resolveIncludes } from "./graph.js";
@@ -280,6 +282,11 @@ describe("include expansion limit: depth, per-node cost, and defaults", () => {
     const board = `${Array.from({ length: 100 }, () => "{{include:big#s0}}").join("\n\n")}\n\n${Array.from({ length: 10 }, (_, i) => `{{include:big#s${i}}}`).join("\n\n")}\n`;
     await storage.writeAtomic(asDocId("board"), board);
     reads.clear();
+    const parses = new Map<string, number>();
+    const parse = (docId: DocId, src: string): ParsedDoc => {
+      parses.set(docId, (parses.get(docId) ?? 0) + 1);
+      return parseDoc(src);
+    };
 
     const started = performance.now();
     // ~1 MB: lift the document size limit so the document is parsed at all.
@@ -288,14 +295,20 @@ describe("include expansion limit: depth, per-node cost, and defaults", () => {
       storage,
       {},
       {
+        parse,
         maxDocumentBytes: 4 * 1024 * 1024,
       },
     );
     const elapsed = performance.now() - started;
-    expect(reads.get("big")).toBe(1);
-    expect(reads.get("board")).toBe(1);
+    // The property under test, counted rather than timed: one read and one
+    // parse per document, however many of the 110 includes name it.
+    expect(Object.fromEntries(reads)).toEqual({ board: 1, big: 1 });
+    expect(Object.fromEntries(parses)).toEqual({ board: 1, big: 1 });
     expect(link.includes.filter((e) => e.status === "duplicate")).toHaveLength(100);
-    expect(elapsed).toBeLessThan(3000);
+    // A backstop only: parsing the ~1 MB document once takes about 1 s locally
+    // and up to about 3 s on a shared CI runner. Re-parsing it per include
+    // would take minutes.
+    expect(elapsed).toBeLessThan(15_000);
   });
 
   it("projects a document with 200,000 references without throwing", async () => {
