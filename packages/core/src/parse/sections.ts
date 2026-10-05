@@ -20,8 +20,30 @@ import type { RefHit } from "./refs.js";
 // every whitespace character).
 const ANCHOR_RE = /\{#([A-Za-z0-9_-]+)\}$/;
 
-/** Split a trailing `{#anchor}` off heading text: the anchor and the heading before it. */
-function splitAnchor(text: string): { anchor?: string; heading: string } {
+/**
+ * Split a trailing `{#anchor}` off a heading's plain text: the string half of
+ * the rule the parser uses to read a section id.
+ *
+ * Trailing whitespace is ignored, the anchor is the `[A-Za-z0-9_-]+` between
+ * `{#` and `}`, and `heading` is the text before it with trailing whitespace
+ * trimmed. Without an anchor, `heading` is `text` unchanged. The match is
+ * linear in the length of `text`, whatever it holds.
+ *
+ * The parser applies it to the heading's last run of plain text only, and only
+ * when the source spells that run's `{#anchor}` literally: an anchor inside a
+ * code span, split by inline formatting (`{#_x_}`), escaped (`\{#x}`) or
+ * written with a character reference is heading text, not an id. A projector
+ * that renders headings from the parsed markdown applies the same rule, so it
+ * removes exactly what the parser reads as the id.
+ * @param text A heading's plain text.
+ * @returns The anchor, when there is one, and the heading text without it.
+ * @example
+ * ```ts
+ * splitHeadingAnchor("Risk limits {#risk-limits}");
+ * // → { anchor: "risk-limits", heading: "Risk limits" }
+ * ```
+ */
+export function splitHeadingAnchor(text: string): { anchor?: string; heading: string } {
   const trimmed = text.trimEnd();
   const match = ANCHOR_RE.exec(trimmed);
   const anchor = match?.[1];
@@ -49,19 +71,51 @@ export interface SectionSpan {
   readonly contentSpans: readonly SourceSpan[];
 }
 
-/** Extract the plain text of a heading (text + inline code, recursing through phrasing containers). */
-function headingText(heading: Heading): string {
-  let out = "";
+/** A run of heading text: a `text` or `inlineCode` node, at most one phrasing container deep. */
+type HeadingLeaf = Heading["children"][number] & { readonly type: "text" | "inlineCode" };
+
+/** The runs that make up a heading's plain text, in order (text + inline code, one container deep). */
+function headingLeaves(heading: Heading): HeadingLeaf[] {
+  const out: HeadingLeaf[] = [];
   for (const child of heading.children) {
     if (child.type === "text" || child.type === "inlineCode") {
-      out += child.value;
+      out.push(child);
     } else if ("children" in child) {
       for (const grand of child.children) {
-        if (grand.type === "text" || grand.type === "inlineCode") out += grand.value;
+        if (grand.type === "text" || grand.type === "inlineCode") out.push(grand);
       }
     }
   }
   return out;
+}
+
+/** Extract the plain text of a heading (text + inline code, recursing through phrasing containers). */
+function headingText(heading: Heading): string {
+  return headingLeaves(heading)
+    .map((leaf) => leaf.value)
+    .join("");
+}
+
+/**
+ * The heading's `{#anchor}`, when its source spells one literally: the anchor
+ * must lie in the heading's last run of plain text (not a code span, not split
+ * by inline formatting), and that run's source must end with the very same
+ * characters, the `{` not escaped by a backslash (so `\{#x}` and `&#123;#x}`
+ * are text).
+ */
+function literalAnchor(heading: Heading, src: string): string | undefined {
+  const last = headingLeaves(heading).at(-1);
+  if (last?.type !== "text") return undefined;
+  const { anchor } = splitHeadingAnchor(last.value);
+  const start = last.position?.start.offset;
+  const end = last.position?.end.offset;
+  if (anchor === undefined || start === undefined || end === undefined) return undefined;
+  const raw = src.slice(start, end).trimEnd();
+  const literal = `{#${anchor}}`;
+  if (!raw.endsWith(literal)) return undefined;
+  let backslashes = 0;
+  for (let i = raw.length - literal.length - 1; i >= 0 && raw[i] === "\\"; i -= 1) backslashes += 1;
+  return backslashes % 2 === 0 ? anchor : undefined;
 }
 
 /** Offset where document content begins (after the leading YAML frontmatter node, if any). */
@@ -108,7 +162,9 @@ export function extractSections(root: Root, src: string, slugger: GithubSlugger)
     if (headingStart === undefined || contentStart === undefined) continue;
 
     const text = headingText(child);
-    const { anchor, heading } = splitAnchor(text);
+    const anchor = literalAnchor(child, src);
+    // The anchor is in the last run, so it is also the text's trailing anchor.
+    const heading = anchor === undefined ? text : splitHeadingAnchor(text).heading;
     const sectionId = anchor !== undefined ? asSectionId(anchor) : asSectionId(slugger.slug(text));
     const level = (depth >= 1 && depth <= 6 ? depth : 6) as 1 | 2 | 3 | 4 | 5 | 6;
 
