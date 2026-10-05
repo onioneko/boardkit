@@ -1089,3 +1089,32 @@ describe("projectHtml — heading anchors (#25)", () => {
     }
   });
 });
+
+describe("projectHtml — block hook diagnostics", () => {
+  it("reports throwing hooks in document order, through includes", async () => {
+    const boom: BlockType = {
+      type: "boom",
+      schema: { type: "object" },
+      project: {
+        html: () => {
+          throw new Error("no");
+        },
+      },
+    };
+    const { tree, values } = await mergedTree(
+      new Map([
+        ["board", "```boom\nid: a\n```\n\n{{include:r}}\n\n```boom\nid: c\n```\n"],
+        ["r", "```boom\nid: b\n```\n"],
+      ]),
+      "board",
+      new Set(["boom"]),
+    );
+    const reported: string[] = [];
+    await projectHtml(tree.root.doc, tree.root.src, values, {
+      merged: tree,
+      blockTypes: new Map([["boom", boom]]),
+      report: (d) => reported.push(String(d.nodeId)),
+    });
+    expect(reported).toEqual(["a", "b", "c"]);
+  });
+});
