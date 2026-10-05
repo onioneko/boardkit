@@ -74,3 +74,45 @@ describe("sections", () => {
     expect(child?.contentSpans).toHaveLength(1);
   });
 });
+
+describe("sections — heading anchors", () => {
+  /** The single non-preamble section of a one-heading document. */
+  function only(src: string): { sectionId: string; heading: string } {
+    const [s] = sections(parseDoc(src, {})).filter((x) => x.sectionId !== "__preamble__");
+    return { sectionId: String(s?.sectionId), heading: String(s?.heading) };
+  }
+
+  it("reads a trailing anchor in plain text, inside emphasis, after a link, before a closing sequence, and in a setext heading", () => {
+    expect(only("## Risk limits {#risk-limits}\n")).toEqual({
+      sectionId: "risk-limits",
+      heading: "Risk limits",
+    });
+    expect(only("## *Em {#em}*\n")).toEqual({ sectionId: "em", heading: "Em" });
+    expect(only("## [Link](https://example.com) {#ln}\n")).toEqual({
+      sectionId: "ln",
+      heading: "Link",
+    });
+    expect(only("## Closed {#closed} ##\n")).toEqual({ sectionId: "closed", heading: "Closed" });
+    expect(only("Setext {#st}\n===\n")).toEqual({ sectionId: "st", heading: "Setext" });
+    expect(only("## Spaced {#sp}   \n")).toEqual({ sectionId: "sp", heading: "Spaced" });
+  });
+
+  it("does not read an anchor written in a code span (code is literal)", () => {
+    expect(only("## Code `{#c1}`\n")).toEqual({ sectionId: "code-c1", heading: "Code {#c1}" });
+  });
+
+  it("does not read an anchor split by inline formatting", () => {
+    // `_x_` is emphasis: the anchor is not one literal run of text.
+    expect(only("## A {#_x_}\n")).toEqual({ sectionId: "a-x", heading: "A {#x}" });
+  });
+
+  it("does not read an escaped or character-referenced brace as an anchor", () => {
+    expect(only("## Esc \\{#esc}\n")).toEqual({ sectionId: "esc-esc", heading: "Esc {#esc}" });
+    expect(only("## Ent &#123;#ent}\n")).toEqual({ sectionId: "ent-ent", heading: "Ent {#ent}" });
+    expect(only("## Hash {\\#h}\n")).toEqual({ sectionId: "hash-h", heading: "Hash {#h}" });
+  });
+
+  it("still reads an anchor after an escaped backslash", () => {
+    expect(only("## Slash \\\\{#sl}\n")).toEqual({ sectionId: "sl", heading: "Slash \\" });
+  });
+});

@@ -154,7 +154,13 @@ importers:
       '@onioneko/boardkit-core':
         specifier: workspace:*
         version: link:../packages/core
+      '@onioneko/boardkit-html':
+        specifier: workspace:*
+        version: link:../packages/html
     devDependencies:
+      '@types/hast':
+        specifier: 'catalog:'
+        version: 3.0.5
       tsx:
         specifier: 'catalog:'
         version: 4.23.13
@@ -270,6 +276,9 @@ importers:
 
   packages/html:
     dependencies:
+      '@types/hast':
+        specifier: 'catalog:'
+        version: 3.0.5
       hast-util-sanitize:
         specifier: 'catalog:'
         version: 5.0.2
@@ -298,9 +307,9 @@ importers:
       '@onioneko/boardkit-core':
         specifier: workspace:^
         version: link:../core
-      '@types/hast':
+      '@types/mdast':
         specifier: 'catalog:'
-        version: 3.0.5
+        version: 4.0.4
       '@types/node':
         specifier: 'catalog:'
         version: 24.13.3

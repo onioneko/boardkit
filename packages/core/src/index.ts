@@ -97,6 +97,8 @@ export type { ComplexityLimits } from "./parse/complexity.js";
 export { DEFAULT_COMPLEXITY_LIMITS } from "./parse/complexity.js";
 // Fence→block recognition config (EngineOptions.parseOptions / PipelineDeps.parseOptions)
 export type { ParseOptions } from "./parse/options.js";
+// A heading's `{#anchor}` split, the rule the parser reads section ids with
+export { splitHeadingAnchor } from "./parse/sections.js";
 // Document size limit (EngineOptions.maxDocumentBytes)
 export { DEFAULT_MAX_DOCUMENT_BYTES } from "./parse/size.js";
 export type { FsStorageOptions } from "./ports/fs.js";

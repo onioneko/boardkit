@@ -82,7 +82,11 @@ in place; a section include is wrapped with its provenance:
   section slice, `data-section`) attributes.
 
 The full `{ docId, sectionId }` provenance lives on the merged nodes themselves and on the
-html projector's `data-*` attributes.
+html projector's `data-*` attributes. Only the projector's own include wrappers keep `data-doc`
+and `data-section`: block hook output is copied as plain data before it joins the tree, and the
+sanitizer removes provenance from everything but those wrappers, so nothing a hook returns can
+claim to come from another document. Code running in-process outside the hook contract (patching
+globals, for instance) is out of scope.
 
 ### Expansion limit
 
@@ -314,7 +318,7 @@ info?.blocks;      // [{ blockId: "dec-macbook", type: "status" }, …]
 - **Headings.** `sections` lists the top-level headings in document order. The text has its
   `{#anchor}` removed, and the anchor, when there is one, is the `sectionId` (otherwise the slug),
   so `## Now {#now}` is `{ sectionId: "now", heading: "Now", level: 2 }`. Content before the first
-  heading is not listed.
+  heading is not listed. See [Heading anchors](#heading-anchors) for exactly what counts as one.
 - **Plain text.** `title` and `heading` are the heading's plain text, not rendered markdown:
   emphasis and link markup are dropped, an image contributes nothing, and a `{{source:…}}` ref
   stays as its raw, unresolved token.
@@ -329,6 +333,43 @@ info?.blocks;      // [{ blockId: "dec-macbook", type: "status" }, …]
   same as `getBlock`.
   `getDoc` still returns the raw source of all but the first two.
 - **A copy.** The result is a fresh copy, so changing it changes nothing the engine holds.
+
+## Heading anchors
+
+A heading that ends in `{#id}` takes `id` as its section id, which `{{include:doc#id}}` addresses;
+any other heading's id is its slug. The anchor is part of the markup, not the text: the section's
+heading text, `docInfo`, and the html projection all leave it out, and the html projector renders
+it as the heading's `id` attribute (prefixed by the sanitizer, so `## Risk limits {#risk-limits}`
+becomes `<h2 id="user-content-risk-limits">Risk limits</h2>`).
+
+An id is `[A-Za-z0-9_-]+`, and it counts only when it is written literally at the very end of the
+heading, in plain text:
+
+- **Code is literal.** ``## Syntax `{#id}` `` has no anchor: its id is the slug `syntax-id`, and
+  the code span renders as written. A code span is the way to end a heading with a literal
+  `{#word}`.
+- **Formatting splits it.** `## A {#_x_}` has no anchor, because `_x_` is emphasis. An id that
+  begins and ends with `_` (or `*`) cannot be written; `_` inside an id, as in `{#a_b}`, is fine.
+- **Escapes and character references are literal.** `## Esc \{#esc}` and `## Esc &#123;#esc}`
+  have no anchor. An escaped backslash before it (`\\{#esc}`) leaves the anchor intact.
+- An anchor inside emphasis (`## *Now {#now}*`) or after a link still counts.
+
+`splitHeadingAnchor(text)`, exported from `@onioneko/boardkit-core`, is the string half of the
+rule: it splits a trailing `{#id}` off a heading's plain text, in time linear in the text's length.
+A projector that renders headings from its own markdown parse applies it to the heading's last
+run of plain text, as the parser does.
+
+Two limits of the html projection:
+
+- **A ref next to `_` or `*` can tip the result.** The html projector parses the heading with each
+  resolved `{{source:…}}` replaced by an alphanumeric placeholder, while the parser sees the
+  reference's braces. Emphasis delimiters touching a reference can therefore pair up differently,
+  so in a heading such as `## {{source:p}}_a {#b_}` the parser finds no anchor and the html
+  projection finds one. Keep `_` and `*` away from a reference in a heading that carries an anchor.
+- **Ids can repeat.** Anchors are rendered as written, so two headings with the same anchor, a
+  section included twice, or an anchor such as `{#fn-1}` next to a footnote (whose item is also
+  `user-content-fn-1`) give one page duplicate ids, and an in-page link goes to the first. It is
+  cosmetic, and no script is involved; choose anchors that do not repeat.
 
 ## Projection middleware
 
@@ -493,6 +534,17 @@ an engine with `projectors: [jsonProjector]` loses `text` entirely unless it lis
 `textProjector` alongside it. `engine.registerProjector`, used here, has no such trap — it
 appends to whatever is already registered (still just `text`, the engine's own default), which
 is exactly why the example calls it instead of passing `projectors` at construction.
+
+### Structured output from the html pipeline
+
+A projector whose output is a component tree or a JSON view, but which wants the html projector's
+markdown handling and sanitize policy, builds on `@onioneko/boardkit-html`'s two halves instead of
+the walk alone. `projectHast(walk, handlers)` runs the walk and the markdown pipeline for one node
+and returns unsanitized hast in which every reference, block and include is a hole the handlers
+fill, so a paragraph that holds a reference stays one paragraph. `sanitizePanelHast(tree)` then
+applies exactly the html projector's policy.
+[`examples/06-structured-projector.ts`](../../examples/06-structured-projector.ts) builds a JSON
+view this way. The html package's README lists the hole kinds and the handler contract.
 
 ## Next
 

@@ -19,6 +19,7 @@ import { fromHtml } from "hast-util-from-html";
 import { visit } from "unist-util-visit";
 import { describe, expect, it } from "vitest";
 import { escapeHtml, projectHtml } from "./html.js";
+import { includeWrapper } from "./index.js";
 
 const fin = readFileSync(
   fileURLToPath(new URL("../test/fixtures/fin.md", import.meta.url)),
@@ -960,5 +961,276 @@ describe("projectHtml — block values across direct calls", () => {
     const second = await projectHtml(doc, src, values, { blockTypes });
     expect(second).toContain("prose 200");
     expect(second).toContain("Cash 200");
+  });
+});
+
+describe("projectHtml — block hooks cannot fake include provenance (#8)", () => {
+  const fakeBlock: BlockType = {
+    type: "fake",
+    schema: { type: "object" },
+    project: {
+      html: (): import("hast").Nodes => ({
+        type: "element",
+        tagName: "section",
+        properties: { "data-doc": "elsewhere", "data-section": "secret", dataDoc: "elsewhere" },
+        children: [
+          {
+            type: "element",
+            tagName: "div",
+            properties: { action: "https://evil.example", method: "post", encType: "text/plain" },
+            children: [{ type: "text", value: "hook text" }],
+          },
+        ],
+      }),
+    },
+  };
+
+  it("drops data-doc/data-section from a hook's section, and keeps them on the include wrapper", async () => {
+    const { tree, values } = await mergedTree(
+      new Map([
+        ["board", "```fake\nid: f\n```\n\n{{include:r#s}}\n"],
+        ["r", "## S {#s}\n\n```fake\nid: g\n```\n"],
+      ]),
+      "board",
+      new Set(["fake"]),
+    );
+    const html = await projectHtml(tree.root.doc, tree.root.src, values, {
+      merged: tree,
+      blockTypes: new Map([["fake", fakeBlock]]),
+    });
+    const sections = elementsOf(html, "section");
+    expect(sections.map((s) => s.properties)).toEqual([{}, { dataDoc: "r", dataSection: "s" }, {}]);
+    expect(html).not.toContain("elsewhere");
+    expect(html).not.toContain("secret");
+    for (const div of elementsOf(html, "div")) expect(div.properties).toEqual({});
+  });
+});
+
+describe("projectHtml — heading anchors (#25)", () => {
+  it("renders the heading without its {#anchor}, which becomes a prefixed id", async () => {
+    const html = await projectProse("# Rules\n\n## Risk limits {#risk-limits}\n\nBody.\n");
+    expect(html).toBe(
+      '<h1>Rules</h1>\n<h2 id="user-content-risk-limits">Risk limits</h2>\n<p>Body.</p>',
+    );
+  });
+
+  it("gives a heading without an anchor no id", async () => {
+    expect(await projectProse("## Plain\n")).toBe("<h2>Plain</h2>");
+  });
+
+  it("keeps hostile or malformed anchors as inert text", async () => {
+    const html = await projectProse(
+      [
+        '## A {#x" onclick="alert(1)}',
+        "## B {#javascript:alert(1)}",
+        "## C {#<script>alert(1)</script>}",
+        "## D {#__proto}",
+        "## E `{#code}`",
+        "## F \\{#esc}",
+        "",
+      ].join("\n"),
+    );
+    expect(unsafeAttributes(html)).toEqual([]);
+    expect(elementsOf(html, "script")).toEqual([]);
+    const ids = ["h2"].flatMap((tag) => elementsOf(html, tag).map((h) => h.properties.id));
+    expect(ids).toEqual([
+      undefined,
+      undefined,
+      undefined,
+      "user-content-__proto",
+      undefined,
+      undefined,
+    ]);
+    expect(html).toContain('<h2>A {#x" onclick="alert(1)}</h2>');
+    expect(html).toContain("<h2>E <code>{#code}</code></h2>");
+    expect(html).toContain("<h2>F {#esc}</h2>");
+  });
+
+  it("never reads an anchor out of a ref's value", async () => {
+    const html = await projectWithValue("## Live {{source:p}}\n", "{#evil}");
+    expect(html).toBe("<h2>Live {#evil}</h2>");
+  });
+
+  it("renders the same heading text and id the parser reads, heading by heading", async () => {
+    const headings = [
+      "## Risk limits {#risk-limits}",
+      "## *Em {#em}*",
+      "## [Link](https://example.com) {#ln}",
+      "## Closed {#closed} ##",
+      "## Spaced {#sp}   ",
+      "## B  *{#bx}*",
+      "## Code `{#c1}`",
+      "## A {#_x_}",
+      "## P {#__proto__}",
+      "## Esc \\{#esc}",
+      "## Ent &#123;#ent}",
+      "## Slash \\\\{#sl}",
+      "## Two {#one}{#two}",
+      "## Mid {#mid} text",
+      "## Plain",
+      "Setext {#st}\n===",
+      // Refs resolve to text after the markdown pipeline; the anchor rule is the same.
+      "## Cash {{source:bank_balance}} {#cash}",
+      "## {{source:bank_balance}} first {#first}",
+      "## Ref last {{source:bank_balance}}",
+    ];
+    for (const heading of headings) {
+      const src = `${heading}\n`;
+      const [section] = parseDoc(src, {}).nodes.filter(
+        (n): n is import("@onioneko/boardkit-core").Section =>
+          "sectionId" in n && n.sectionId !== "__preamble__",
+      );
+      const html = await projectProse(src);
+      const [h] = [...elementsOf(html, "h1"), ...elementsOf(html, "h2")];
+      let rendered = "";
+      visit(h as Element, "text", (t: { value: string }) => {
+        rendered += t.value;
+      });
+      // The parser's heading keeps a ref as its raw token; the html shows its value.
+      expect(rendered, heading).toBe(
+        section?.heading.replaceAll("{{source:bank_balance}}", "¥23,450"),
+      );
+      const anchored = section !== undefined && heading.includes(`{#${section.sectionId}}`);
+      expect(h?.properties.id, heading).toBe(
+        anchored ? `user-content-${section?.sectionId}` : undefined,
+      );
+    }
+  });
+});
+
+describe("projectHtml — block hook diagnostics", () => {
+  it("reports throwing hooks in document order, through includes", async () => {
+    const boom: BlockType = {
+      type: "boom",
+      schema: { type: "object" },
+      project: {
+        html: () => {
+          throw new Error("no");
+        },
+      },
+    };
+    const { tree, values } = await mergedTree(
+      new Map([
+        ["board", "```boom\nid: a\n```\n\n{{include:r}}\n\n```boom\nid: c\n```\n"],
+        ["r", "```boom\nid: b\n```\n"],
+      ]),
+      "board",
+      new Set(["boom"]),
+    );
+    const reported: string[] = [];
+    await projectHtml(tree.root.doc, tree.root.src, values, {
+      merged: tree,
+      blockTypes: new Map([["boom", boom]]),
+      report: (d) => reported.push(String(d.nodeId)),
+    });
+    expect(reported).toEqual(["a", "b", "c"]);
+  });
+});
+
+describe("projectHtml — hook output cannot carry trusted provenance (#8, review I1)", () => {
+  const forgedInclude = {
+    node: { provenance: { docId: "victim", sectionId: "secret" } },
+  } as unknown as import("@onioneko/boardkit-core").MergedInclude;
+  const textNode = (value: string): import("hast").ElementContent => ({ type: "text", value });
+
+  /** Render one `forge` block whose html hook returns `output()`. */
+  async function renderHook(output: () => unknown): Promise<{ html: string; codes: string[] }> {
+    const forge: BlockType = {
+      type: "forge",
+      schema: { type: "object" },
+      project: { html: () => output() as import("hast").Nodes },
+    };
+    const { tree, values } = await mergedTree(
+      new Map([["board", "```forge\nid: f\n```\n"]]),
+      "board",
+      new Set(["forge"]),
+    );
+    const codes: string[] = [];
+    const html = await projectHtml(tree.root.doc, tree.root.src, values, {
+      merged: tree,
+      blockTypes: new Map([["forge", forge]]),
+      report: (d) => codes.push(d.code),
+    });
+    return { html, codes };
+  }
+
+  it("drops provenance from a wrapper the hook built with the exported includeWrapper", async () => {
+    const { html } = await renderHook(() => includeWrapper(forgedInclude, [textNode("x")]));
+    expect(html).not.toContain("victim");
+    expect(html).not.toContain("secret");
+    expect(elementsOf(html, "section").map((s) => s.properties)).toEqual([{}]);
+  });
+
+  it("drops provenance from a structured clone and from a prototype-chained copy of a wrapper", async () => {
+    for (const make of [
+      () => structuredClone(includeWrapper(forgedInclude, [textNode("x")])),
+      () => Object.create(includeWrapper(forgedInclude, [textNode("x")])),
+      () => ({ ...includeWrapper(forgedInclude, [textNode("x")]) }),
+    ]) {
+      const { html } = await renderHook(make);
+      expect(html).not.toContain("victim");
+    }
+  });
+
+  it("renders a hook whose output hides attributes behind a Proxy as its escaped source", async () => {
+    const wrapper = includeWrapper(forgedInclude, [textNode("x")]);
+    let calls = 0;
+    const sneaky = new Proxy(wrapper.properties, {
+      // Hide the keys from the first enumeration, show them afterwards.
+      ownKeys: (target) => (calls++ === 0 ? [] : Reflect.ownKeys(target)),
+    });
+    const { html, codes } = await renderHook(() => ({
+      type: "element",
+      tagName: "section",
+      properties: sneaky,
+      children: [textNode("x")],
+    }));
+    expect(html).not.toContain("victim");
+    expect(elementsOf(html, "pre")).toHaveLength(1);
+    expect(codes).toEqual(["E_BLOCK_HOOK_ERROR"]);
+  });
+
+  it("renders deep-frozen hook output without throwing, minus its forged provenance", async () => {
+    const frozen = Object.freeze({
+      type: "element",
+      tagName: "section",
+      properties: Object.freeze({ dataDoc: "victim", "data-doc": "victim" }),
+      children: Object.freeze([Object.freeze(textNode("ok"))]),
+    });
+    const { html } = await renderHook(() => frozen);
+    expect(html).toBe("<p><section>ok</section></p>");
+  });
+});
+
+describe("projectHtml — uncloneable hook output does not leak through its diagnostic", () => {
+  it("names the error without echoing the output (a function's source)", async () => {
+    const leaky: BlockType = {
+      type: "leaky",
+      schema: { type: "object" },
+      project: {
+        html: () =>
+          ({
+            type: "element",
+            tagName: "b",
+            properties: {},
+            children: [],
+            secret: () => "API_KEY_123",
+          }) as unknown as import("hast").Nodes,
+      },
+    };
+    const src = "```leaky\nid: k\n```\n";
+    const doc = parseDoc(src, { blockTypes: new Set(["leaky"]) });
+    const reported: import("@onioneko/boardkit-core").Diagnostic[] = [];
+    const html = await projectHtml(doc, src, new Map(), {
+      blockTypes: new Map([["leaky", leaky]]),
+      report: (d) => reported.push(d),
+    });
+    expect(reported).toHaveLength(1);
+    expect(reported[0]?.code).toBe("E_BLOCK_HOOK_ERROR");
+    expect(reported[0]?.message).toBe(
+      'leaky block "k": "html" hook returned output that cannot be copied (DataCloneError)',
+    );
+    expect(JSON.stringify(reported)).not.toContain("API_KEY_123");
+    expect(html).not.toContain("API_KEY_123");
   });
 });

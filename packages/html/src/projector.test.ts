@@ -94,6 +94,18 @@ describe("htmlProjector", () => {
     );
   });
 
+  it("renders a heading without its {#anchor}, linking the anchor as the heading's id (#25)", async () => {
+    const engine = createEngine({ storage: createMemStorage() });
+    engine.registerProjector(htmlProjector);
+    await engine.createDoc("rules", {
+      writer,
+      content: "# Rules\n\n## Risk limits {#risk-limits}\n\nBody.\n",
+    });
+    expect((await engine.projection("rules", "html", {})).output).toBe(
+      '<h1>Rules</h1>\n<h2 id="user-content-risk-limits">Risk limits</h2>\n<p>Body.</p>',
+    );
+  });
+
   it("is not registered by default: an engine without it reports an unknown projector", async () => {
     const engine = await makeEngine();
     const html = await engine.projection("fin", "html", { source });

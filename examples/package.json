@@ -13,9 +13,11 @@
   },
   "dependencies": {
     "@onioneko/boardkit-core": "workspace:*",
-    "@onioneko/boardkit-blocks": "workspace:*"
+    "@onioneko/boardkit-blocks": "workspace:*",
+    "@onioneko/boardkit-html": "workspace:*"
   },
   "devDependencies": {
+    "@types/hast": "catalog:",
     "tsx": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"

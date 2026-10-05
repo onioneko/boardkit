@@ -9,6 +9,11 @@
  * embedding in a panel, with every `data-intent` attribute enriched into a full
  * Intent payload the browser can post straight back.
  *
+ * A projector whose output is structured rather than an HTML string builds on
+ * the same two halves: {@link projectHast} (one node's hast, with every
+ * reference, block and include left as a hole the caller fills) and
+ * {@link sanitizePanelHast} (the html projector's exact sanitize pass).
+ *
  * The engine registers only the `text` projector by default. Register this one:
  *
  * ```ts
@@ -26,12 +31,21 @@
  * @module
  */
 
+export type {
+  BlockHole,
+  HastHoleHandlers,
+  Hole,
+  IncludeHole,
+  SourceHole,
+  UnresolvedHole,
+} from "./holes.js";
+export { projectHast } from "./holes.js";
 export type { HtmlProjectionOptions } from "./html.js";
+export { degradedHtml, escapeHtml, htmlProjector, projectHtml } from "./html.js";
 export {
-  degradedHtml,
-  escapeHtml,
-  htmlProjector,
+  includeWrapper,
+  panelAttributeNames,
   panelSchema,
-  projectHtml,
   pruneLabelAttributes,
-} from "./html.js";
+  sanitizePanelHast,
+} from "./sanitize.js";
