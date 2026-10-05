@@ -307,18 +307,26 @@ info?.sections;    // [{ sectionId: "family-finance", heading: "Family Finance",
 info?.blocks;      // [{ blockId: "dec-macbook", type: "status" }, …]
 ```
 
-- **Title.** The frontmatter `title` when it is a non-blank string, otherwise the text of the first
-  level-1 heading, ATX (`#`) or setext (`===`). A heading inside a fence, blockquote or list is
-  not a document heading, so it is never the title. Without either, `title` is absent.
+- **Title.** The frontmatter `title` when it is a non-blank string (trimmed), otherwise the text
+  of the first non-empty level-1 heading, ATX (`#`) or setext (`===`). A heading inside a fence,
+  blockquote or list is not a document heading, so it is never the title. Without either, `title`
+  is absent.
 - **Headings.** `sections` lists the top-level headings in document order. The text has its
   `{#anchor}` removed, and the anchor, when there is one, is the `sectionId` (otherwise the slug),
   so `## Now {#now}` is `{ sectionId: "now", heading: "Now", level: 2 }`. Content before the first
   heading is not listed.
+- **Plain text.** `title` and `heading` are the heading's plain text, not rendered markdown:
+  emphasis and link markup are dropped, an image contributes nothing, and a `{{source:…}}` ref
+  stays as its raw, unresolved token.
+- **Ids are not unique.** Two headings can carry the same explicit anchor, or an anchor equal to
+  another heading's slug, and an empty heading has an empty id. Key a list by position rather than
+  by `sectionId`; an `{{include:doc#id}}` addresses the first section with that id.
 - **Diagnostics.** `diagnostics` holds the parse's own, such as invalid frontmatter YAML.
 - **Cost.** The summary comes from the engine's parse cache, like `getBlock`: a document the engine
   wrote or has already projected costs no parse, and any other is parsed once and cached.
 - **Absent.** `docInfo` returns `undefined` for a missing document, an invalid id, a document over
-  `maxDocumentBytes` or a complexity limit, and one whose parse threw, the same as `getBlock`.
+  `maxDocumentBytes` or a complexity limit, and one whose parse (or the copy of it) threw, the
+  same as `getBlock`.
   `getDoc` still returns the raw source of all but the first two.
 - **A copy.** The result is a fresh copy, so changing it changes nothing the engine holds.
 
