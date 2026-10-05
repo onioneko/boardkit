@@ -1,7 +1,7 @@
 # BoardKit examples
 
-Runnable, CI-checked versions of the README's Quick start. All three open the
-same shared document, `fin.md`, sitting beside these scripts.
+Runnable, CI-checked versions of the README's Quick start. Most of them open
+the same shared document, `fin.md`, sitting beside these scripts.
 
 - `01-hello.ts` — the whole lifecycle: create a document, project it, watch
   its events, write through an affordance intent, and read the changed
@@ -18,6 +18,10 @@ same shared document, `fin.md`, sitting beside these scripts.
   `walkProjectionParts` walk, consulting each block's own hook and falling
   back to its attrs, and keying a ref with no value through
   `onUnresolvedSource`.
+- `06-structured-projector.ts` — a projector whose output is a JSON view,
+  built on `@onioneko/boardkit-html`'s `projectHast` (hast with holes for refs,
+  blocks and includes) and `sanitizePanelHast` (the html projector's exact
+  sanitize pass).
 
 ## Run
 
@@ -25,8 +29,8 @@ same shared document, `fin.md`, sitting beside these scripts.
 pnpm install && pnpm build && pnpm example 01-hello.ts
 ```
 
-(`pnpm build` first — these resolve `@onioneko/boardkit-core` and `@onioneko/boardkit-blocks`
-through their built `dist/`, like any real consumer.)
+(`pnpm build` first — these resolve `@onioneko/boardkit-core`, `@onioneko/boardkit-blocks`
+and `@onioneko/boardkit-html` through their built `dist/`, like any real consumer.)
 
 ## The `// Output:` convention
 

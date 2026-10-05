@@ -154,7 +154,13 @@ importers:
       '@onioneko/boardkit-core':
         specifier: workspace:*
         version: link:../packages/core
+      '@onioneko/boardkit-html':
+        specifier: workspace:*
+        version: link:../packages/html
     devDependencies:
+      '@types/hast':
+        specifier: 'catalog:'
+        version: 3.0.5
       tsx:
         specifier: 'catalog:'
         version: 4.23.13
