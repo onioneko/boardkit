@@ -276,6 +276,9 @@ importers:
 
   packages/html:
     dependencies:
+      '@types/hast':
+        specifier: 'catalog:'
+        version: 3.0.5
       hast-util-sanitize:
         specifier: 'catalog:'
         version: 5.0.2
@@ -304,9 +307,6 @@ importers:
       '@onioneko/boardkit-core':
         specifier: workspace:^
         version: link:../core
-      '@types/hast':
-        specifier: 'catalog:'
-        version: 3.0.5
       '@types/mdast':
         specifier: 'catalog:'
         version: 4.0.4
