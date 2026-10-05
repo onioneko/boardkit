@@ -83,8 +83,10 @@ in place; a section include is wrapped with its provenance:
 
 The full `{ docId, sectionId }` provenance lives on the merged nodes themselves and on the
 html projector's `data-*` attributes. Only the projector's own include wrappers keep `data-doc`
-and `data-section`: the sanitizer removes them from block hook output, so a hook cannot make its
-markup look as though it came from another document.
+and `data-section`: block hook output is copied as plain data before it joins the tree, and the
+sanitizer removes provenance from everything but those wrappers, so nothing a hook returns can
+claim to come from another document. Code running in-process outside the hook contract (patching
+globals, for instance) is out of scope.
 
 ### Expansion limit
 

@@ -1,5 +1,5 @@
 import type { MergedInclude } from "@onioneko/boardkit-core";
-import type { Element, ElementContent, Nodes, Root } from "hast";
+import type { Element, ElementContent, Nodes, Properties, Root, RootContent } from "hast";
 import { defaultSchema, type Schema, sanitize } from "hast-util-sanitize";
 import { visit } from "unist-util-visit";
 
@@ -141,8 +141,11 @@ function prefixFootnoteLinks(tree: Nodes): void {
 /**
  * Include wrappers built by {@link includeWrapper}: the only elements whose
  * `data-doc`/`data-section` survive {@link sanitizePanelHast}. Membership is
- * object identity, which hook output (plain data a block hook returned) cannot
- * forge.
+ * object identity. Hook output never carries it, because {@link projectHast}
+ * hands handlers a structured clone of what a hook returned, so a hook that
+ * calls `includeWrapper` itself gets an ordinary `section` into the tree.
+ * Code running in-process outside the hook contract (patching `WeakSet`, for
+ * one) is out of scope: it can change anything.
  */
 const provenanceWrappers = new WeakSet<Element>();
 
@@ -156,9 +159,11 @@ function isProvenanceKey(key: string): boolean {
  * The provenance wrapper around one expanded include: a `<section>` carrying
  * the include's `data-doc` and, for a section slice, `data-section`, with
  * `children` inside it. It is the only element whose provenance attributes
- * {@link sanitizePanelHast} keeps, so a block hook cannot make its output look
- * as though it came from another document. The trust is in this exact object:
- * a copy of it (`structuredClone`, a spread) is an ordinary `section` again.
+ * {@link sanitizePanelHast} keeps. The trust is in this exact object: a copy
+ * of it (`structuredClone`, a spread, an object whose prototype it is) is an
+ * ordinary `section` again. Call it from the projector's own include path; a
+ * block hook may call it too, but {@link projectHast} copies hook output, so
+ * the hook's wrapper loses its provenance before it reaches the tree.
  * @param include The expanded include (its child node carries the provenance).
  * @param children What the include projected to.
  * @returns The wrapper element.
@@ -184,14 +189,58 @@ export function includeWrapper(include: MergedInclude, children: ElementContent[
   return wrapper;
 }
 
-/** Remove `data-doc`/`data-section` from every element that is not an {@link includeWrapper}. */
-function stripForgedProvenance(tree: Nodes): void {
-  visit(tree, "element", (el: Element) => {
-    if (provenanceWrappers.has(el)) return;
-    for (const key of Object.keys(el.properties)) {
-      if (isProvenanceKey(key)) delete el.properties[key];
+/** A property value as plain data: a primitive or a list of primitives; anything else is dropped. */
+function plainValue(value: unknown): Properties[string] | undefined {
+  if (value === null || ["string", "number", "boolean"].includes(typeof value)) {
+    return value as Properties[string];
+  }
+  if (!Array.isArray(value)) return undefined;
+  return Array.from(value as unknown[]).filter(
+    (item): item is string | number => typeof item === "string" || typeof item === "number",
+  );
+}
+
+/**
+ * A plain-data copy of `node`, read once, for the sanitizer to work on. Every
+ * field is read exactly once and copied into objects this module made, so a
+ * getter or a `Proxy` cannot show the checks one thing and the sanitizer
+ * another, and the caller's tree (frozen, or shared) is never written to.
+ * `data-doc`/`data-section` are copied only from an {@link includeWrapper}
+ * itself: not from any other element, a copy of a wrapper, or an object whose
+ * prototype is one. Node types the sanitizer would drop anyway are dropped.
+ */
+function plainCopy(node: unknown): RootContent | undefined {
+  if (typeof node !== "object" || node === null) return undefined;
+  const { type } = node as { type?: unknown };
+  if (type === "text" || type === "comment") {
+    const { value } = node as { value?: unknown };
+    return { type, value: typeof value === "string" ? value : "" };
+  }
+  if (type !== "element") return undefined;
+  const el = node as { tagName?: unknown; properties?: unknown; children?: unknown };
+  const tagName = el.tagName;
+  if (typeof tagName !== "string") return undefined;
+  const trusted = provenanceWrappers.has(node as Element);
+  const properties: Properties = {};
+  const source = el.properties;
+  if (typeof source === "object" && source !== null) {
+    for (const key of Object.keys(source)) {
+      if (!trusted && isProvenanceKey(key)) continue;
+      const value = plainValue((source as Record<string, unknown>)[key]);
+      if (value !== undefined) properties[key] = value;
     }
-  });
+  }
+  return { type: "element", tagName, properties, children: plainChildren(el.children) };
+}
+
+function plainChildren(children: unknown): ElementContent[] {
+  if (!Array.isArray(children)) return [];
+  const out: ElementContent[] = [];
+  for (const child of Array.from(children as unknown[])) {
+    const copy = plainCopy(child);
+    if (copy !== undefined && copy.type !== "doctype") out.push(copy);
+  }
+  return out;
 }
 
 /**
@@ -199,8 +248,9 @@ function stripForgedProvenance(tree: Nodes): void {
  * itself (with {@link projectHast} or otherwise) and wants exactly the html
  * projector's policy:
  *
- * 1. `data-doc`/`data-section` are removed from every element that is not an
- *    {@link includeWrapper}, so hook output cannot fake include provenance;
+ * 1. the tree is copied as plain data, read once, and `data-doc`/`data-section`
+ *    are kept only on an {@link includeWrapper} itself, so content that did
+ *    not come from the projector's own include path cannot fake provenance;
  * 2. `href`/`src` schemes are lowercased, so `HTTPS:` and `MAILTO:` URLs pass
  *    the case-sensitive scheme check;
  * 3. the tree is sanitized with {@link panelSchema};
@@ -208,7 +258,7 @@ function stripForgedProvenance(tree: Nodes): void {
  * 5. GFM footnote links get the `user-content-` prefix their targets' ids got.
  *
  * `projectHtml` runs this function and nothing else, so the two never differ.
- * @param tree The unsanitized tree. It may be mutated; use the return value.
+ * @param tree The unsanitized tree. It is not modified.
  * @returns A new, sanitized tree.
  * @example
  * ```ts
@@ -216,9 +266,9 @@ function stripForgedProvenance(tree: Nodes): void {
  * ```
  */
 export function sanitizePanelHast(tree: Root): Root {
-  stripForgedProvenance(tree);
-  lowercaseSchemes(tree);
-  const safe = sanitize(tree, panelSchema()) as Root;
+  const copy: Root = { type: "root", children: plainChildren(tree.children) };
+  lowercaseSchemes(copy);
+  const safe = sanitize(copy, panelSchema()) as Root;
   pruneLabelAttributes(safe);
   prefixFootnoteLinks(safe);
   return safe;

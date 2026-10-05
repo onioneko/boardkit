@@ -1,4 +1,5 @@
 import {
+  diagnostic,
   type MergedInclude,
   type ProjectionWalkBlock,
   type ProjectionWalkContext,
@@ -55,7 +56,12 @@ export interface UnresolvedHole {
   readonly value?: string;
 }
 
-/** A typed block, with this walk's projection hook already dispatched. */
+/**
+ * A typed block, with this walk's projection hook already dispatched. Its
+ * `output` is a structured clone of what the hook returned, so the hook's own
+ * objects never reach the tree; output that cannot be cloned arrives as
+ * `undefined` with an `E_BLOCK_HOOK_ERROR` in `hookError`, like a throwing hook.
+ */
 export interface BlockHole {
   readonly kind: "block";
   /** The block, whether it had a hook, the hook's output, and its verbatim source. */
@@ -149,6 +155,31 @@ function placeholderNonce(src: string, ranges: readonly SourceSpan[]): string {
 interface Filled {
   readonly hole: Hole;
   readonly nodes: readonly ElementContent[];
+}
+
+/**
+ * The block with its hook's output replaced by a structured clone: plain data
+ * the hook can no longer reach, holding none of the objects the hook returned.
+ * So nothing a hook returns can be an {@link includeWrapper} (trust is object
+ * identity, which a clone does not carry), can change between reads (a getter
+ * or a `Proxy`), or is frozen against the projector's own enrichment. Output
+ * that cannot be cloned (a `Proxy`, a function) fails soft like a throwing
+ * hook: no output, and an `E_BLOCK_HOOK_ERROR` in `hookError`.
+ */
+function detach(piece: ProjectionWalkBlock, projectorId: string): ProjectionWalkBlock {
+  if (piece.output === undefined) return piece;
+  try {
+    return { ...piece, output: structuredClone(piece.output) };
+  } catch (err) {
+    const { block } = piece;
+    const message = err instanceof Error ? err.message : String(err);
+    const hookError = diagnostic(
+      "E_BLOCK_HOOK_ERROR",
+      `${block.type} block "${block.blockId}": "${projectorId}" hook returned output that cannot be copied: ${message}`,
+      { nodeId: block.blockId },
+    );
+    return { block, hooked: piece.hooked, output: undefined, raw: piece.raw, hookError };
+  }
 }
 
 /** The default text of a hole inside an attribute value. */
@@ -284,7 +315,7 @@ export async function projectHast(
   const walkHandlers: ProjectionWalkHandlers<string> = {
     onProse: (prose) => prose,
     onSource: (value, ref, ctx) => token({ kind: "source", ref, value }, ctx),
-    onBlock: (block, ctx) => token({ kind: "block", block }, ctx),
+    onBlock: (block, ctx) => token({ kind: "block", block: detach(block, walk.projectorId) }, ctx),
     onInclude: (include, ctx) => token({ kind: "include", include }, ctx),
     ...(handlers.onUnresolved !== undefined
       ? {

@@ -37,7 +37,7 @@ const engine = createEngine({ storage, projectors: [textProjector, htmlProjector
 | `projectHast(walk, handlers)` | One node's markdown as unsanitized hast, with every reference, block and include left as a hole `handlers` fill. The html projector's own pipeline, for a projector whose output is structured. See [Structured projectors](#structured-projectors). |
 | `HastHoleHandlers`, `Hole` | The handlers `projectHast` takes, and the hole kinds: `SourceHole`, `UnresolvedHole`, `BlockHole`, `IncludeHole`. |
 | `includeWrapper(include, children)` | The `<section data-doc data-section>` provenance wrapper around an expanded include, the only element whose provenance survives `sanitizePanelHast`. |
-| `sanitizePanelHast(tree)` | The whole sanitize pass `projectHtml` runs: provenance check, scheme lowercasing, `panelSchema()`, `pruneLabelAttributes`, footnote links. Returns the sanitized tree; the input may be mutated. |
+| `sanitizePanelHast(tree)` | The whole sanitize pass `projectHtml` runs: a read-once plain copy with the provenance check, scheme lowercasing, `panelSchema()`, `pruneLabelAttributes`, footnote links. Returns a new sanitized tree and does not modify its input. |
 | `panelSchema()` | The `hast-util-sanitize` schema the whole projected document is sanitized against. |
 | `panelAttributeNames()` | The attribute names `panelSchema()` allows, per tag plus `"*"`, as plain lists without value constraints. |
 | `pruneLabelAttributes(node)` | The post-sanitize `<label>` hardening the schema cannot express. |
@@ -79,7 +79,12 @@ accepts no options of its own.
    `className`: it exists so a checklist item's text can wrap its input, and
    the sanitizer's `'*'` wildcard cannot be revoked per tag. `data-doc` and
    `data-section` survive only on the projector's own include wrappers, so a
-   block hook cannot fake where its output came from.
+   block hook's output cannot claim to come from another document: hook
+   output is copied as plain data before it joins the tree, so even a wrapper
+   a hook builds with `includeWrapper` loses its provenance. (Code that runs
+   in-process outside the hook contract, patching globals for instance, is
+   out of scope.) Hook output that cannot be copied, such as a `Proxy`,
+   renders as the block's escaped source with `E_BLOCK_HOOK_ERROR`.
 3. **Heading anchors.** A heading's trailing `{#anchor}` is removed from its
    text, by the same rule the parser reads section ids with, and becomes the
    heading's `id` (prefixed, like every id, as `user-content-…`):
@@ -148,7 +153,8 @@ const tree = sanitizePanelHast(await projectHast(walkOf(input.merged.root), hand
 - **Unsanitized.** `projectHast` returns the tree as built, hook output and
   all. Run `sanitizePanelHast` on it before anything renders it. Build
   include wrappers with `includeWrapper`: the sanitizer keeps provenance on
-  that exact object and removes it everywhere else, copies included.
+  that exact object and removes it everywhere else, copies included. A block
+  hole's `output` is already a structured clone of what the hook returned.
 
 [`examples/06-structured-projector.ts`](https://github.com/onioneko/boardkit/blob/main/examples/06-structured-projector.ts)
 is a complete JSON view projector built this way.
