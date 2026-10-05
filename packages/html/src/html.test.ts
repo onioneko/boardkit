@@ -1069,6 +1069,10 @@ describe("projectHtml — heading anchors (#25)", () => {
       "## Mid {#mid} text",
       "## Plain",
       "Setext {#st}\n===",
+      // Refs resolve to text after the markdown pipeline; the anchor rule is the same.
+      "## Cash {{source:bank_balance}} {#cash}",
+      "## {{source:bank_balance}} first {#first}",
+      "## Ref last {{source:bank_balance}}",
     ];
     for (const heading of headings) {
       const src = `${heading}\n`;
@@ -1082,7 +1086,10 @@ describe("projectHtml — heading anchors (#25)", () => {
       visit(h as Element, "text", (t: { value: string }) => {
         rendered += t.value;
       });
-      expect(rendered, heading).toBe(section?.heading);
+      // The parser's heading keeps a ref as its raw token; the html shows its value.
+      expect(rendered, heading).toBe(
+        section?.heading.replaceAll("{{source:bank_balance}}", "¥23,450"),
+      );
       const anchored = section !== undefined && heading.includes(`{#${section.sectionId}}`);
       expect(h?.properties.id, heading).toBe(
         anchored ? `user-content-${section?.sectionId}` : undefined,

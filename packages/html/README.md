@@ -91,7 +91,11 @@ accepts no options of its own.
    `## Risk limits {#risk-limits}` renders as
    `<h2 id="user-content-risk-limits">Risk limits</h2>`. An anchor in a code
    span, split by formatting, or escaped is ordinary text. The projections
-   guide's "Heading anchors" section has the full rule.
+   guide's "Heading anchors" section has the full rule, and two limits: `_` or
+   `*` touching a `{{source:…}}` in an anchored heading can make the html
+   projection and the parser disagree on the anchor, and ids are not made
+   unique, so a repeated anchor, a section included twice, or `{#fn-1}` next
+   to a footnote gives the page duplicate ids.
 4. **Failure is inert, too.** A block whose `html` hook throws renders as its
    escaped source in `<pre><code>`, the rest of the document renders normally,
    and the projection reports `E_BLOCK_HOOK_ERROR`. If the projection fails as
