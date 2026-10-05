@@ -18,9 +18,11 @@
 <div class="tsd-description">
 <div class="tsd-comment tsd-typography"><p>Panel-embedding sanitize schema, applied to the whole projected document:
 defaultSchema plus className/id/data-intent/data-source/data-state on every
-element, <code>data-doc</code>/<code>data-section</code> on <code>section</code> (the include provenance
-wrapper), <code>button</code> and <code>label</code> added to <code>tagNames</code> (the panel renders
-transition buttons; a checklist item wraps its input and text in a <code>label</code>
+element, minus the wildcard's form-submission attributes (<code>action</code>,
+<code>method</code>, <code>encType</code>), <code>data-doc</code>/<code>data-section</code> on <code>section</code> (the include
+provenance wrapper; <a href="html_src.sanitizePanelHast.html" class="tsd-kind-function">sanitizePanelHast</a> keeps them only on wrappers
+built by <a href="html_src.includeWrapper.html" class="tsd-kind-function">includeWrapper</a>), <code>button</code> and <code>label</code> added to <code>tagNames</code>
+(hosts render transition buttons; a checklist item wraps its input and text in a <code>label</code>
 so a click on the text toggles the box — neither tag is in the default
 schema), and <code>required.input</code> narrowed to <code>{ type: &quot;checkbox&quot; }</code>.</p>
 <p>URL protocols follow defaultSchema, except that <code>href</code> is narrowed to
@@ -54,7 +56,7 @@ unconditional.</p>
 <h4 class="tsd-returns-title">Returns <span class="tsd-signature-type">Schema</span></h4><p>A fresh schema; callers may extend it without affecting this module.</p>
 <aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/html/src/html.ts#L189">packages/html/src/html.ts:189</a></li></ul></aside></div></li></ul></section></div>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/html/src/sanitize.ts#L61">packages/html/src/sanitize.ts:61</a></li></ul></aside></div></li></ul></section></div>
 <div class="col-sidebar">
 <div class="page-menu">
 <div class="tsd-navigation settings">
