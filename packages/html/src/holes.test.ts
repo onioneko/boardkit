@@ -147,6 +147,33 @@ describe("projectHast — holes in element content", () => {
     expect(textOf(p as Element)).toBe("hook");
   });
 
+  it("hands a block hole a copy of the hook's output, never the hook's own objects", async () => {
+    const returned = { type: "element", tagName: "b", properties: {}, children: [] };
+    const doc = parseDoc("```same\nid: s\n```\n", { blockTypes: new Set(["same"]) });
+    const same: BlockType = {
+      type: "same",
+      schema: { type: "object" },
+      project: { html: () => returned },
+    };
+    const outputs: unknown[] = [];
+    await projectHast(
+      {
+        node: documentNode(doc, "```same\nid: s\n```\n"),
+        values: new Map(),
+        projectorId: "html",
+        blockTypes: new Map([["same", same]]),
+      },
+      {
+        onHole: (hole) => {
+          if (hole.kind === "block") outputs.push(hole.block.output);
+          return [];
+        },
+      },
+    );
+    expect(outputs).toEqual([returned]);
+    expect(outputs[0]).not.toBe(returned);
+  });
+
   it("returns the tree unsanitized", async () => {
     const tree = await projectHast(walkOf("x {{source:a}}\n", { a: "1" }), {
       onHole: () => [

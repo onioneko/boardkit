@@ -19,6 +19,7 @@ import { fromHtml } from "hast-util-from-html";
 import { visit } from "unist-util-visit";
 import { describe, expect, it } from "vitest";
 import { escapeHtml, projectHtml } from "./html.js";
+import { includeWrapper } from "./index.js";
 
 const fin = readFileSync(
   fileURLToPath(new URL("../test/fixtures/fin.md", import.meta.url)),
@@ -1116,5 +1117,80 @@ describe("projectHtml — block hook diagnostics", () => {
       report: (d) => reported.push(String(d.nodeId)),
     });
     expect(reported).toEqual(["a", "b", "c"]);
+  });
+});
+
+describe("projectHtml — hook output cannot carry trusted provenance (#8, review I1)", () => {
+  const forgedInclude = {
+    node: { provenance: { docId: "victim", sectionId: "secret" } },
+  } as unknown as import("@onioneko/boardkit-core").MergedInclude;
+  const textNode = (value: string): import("hast").ElementContent => ({ type: "text", value });
+
+  /** Render one `forge` block whose html hook returns `output()`. */
+  async function renderHook(output: () => unknown): Promise<{ html: string; codes: string[] }> {
+    const forge: BlockType = {
+      type: "forge",
+      schema: { type: "object" },
+      project: { html: () => output() as import("hast").Nodes },
+    };
+    const { tree, values } = await mergedTree(
+      new Map([["board", "```forge\nid: f\n```\n"]]),
+      "board",
+      new Set(["forge"]),
+    );
+    const codes: string[] = [];
+    const html = await projectHtml(tree.root.doc, tree.root.src, values, {
+      merged: tree,
+      blockTypes: new Map([["forge", forge]]),
+      report: (d) => codes.push(d.code),
+    });
+    return { html, codes };
+  }
+
+  it("drops provenance from a wrapper the hook built with the exported includeWrapper", async () => {
+    const { html } = await renderHook(() => includeWrapper(forgedInclude, [textNode("x")]));
+    expect(html).not.toContain("victim");
+    expect(html).not.toContain("secret");
+    expect(elementsOf(html, "section").map((s) => s.properties)).toEqual([{}]);
+  });
+
+  it("drops provenance from a structured clone and from a prototype-chained copy of a wrapper", async () => {
+    for (const make of [
+      () => structuredClone(includeWrapper(forgedInclude, [textNode("x")])),
+      () => Object.create(includeWrapper(forgedInclude, [textNode("x")])),
+      () => ({ ...includeWrapper(forgedInclude, [textNode("x")]) }),
+    ]) {
+      const { html } = await renderHook(make);
+      expect(html).not.toContain("victim");
+    }
+  });
+
+  it("renders a hook whose output hides attributes behind a Proxy as its escaped source", async () => {
+    const wrapper = includeWrapper(forgedInclude, [textNode("x")]);
+    let calls = 0;
+    const sneaky = new Proxy(wrapper.properties, {
+      // Hide the keys from the first enumeration, show them afterwards.
+      ownKeys: (target) => (calls++ === 0 ? [] : Reflect.ownKeys(target)),
+    });
+    const { html, codes } = await renderHook(() => ({
+      type: "element",
+      tagName: "section",
+      properties: sneaky,
+      children: [textNode("x")],
+    }));
+    expect(html).not.toContain("victim");
+    expect(elementsOf(html, "pre")).toHaveLength(1);
+    expect(codes).toEqual(["E_BLOCK_HOOK_ERROR"]);
+  });
+
+  it("renders deep-frozen hook output without throwing, minus its forged provenance", async () => {
+    const frozen = Object.freeze({
+      type: "element",
+      tagName: "section",
+      properties: Object.freeze({ dataDoc: "victim", "data-doc": "victim" }),
+      children: Object.freeze([Object.freeze(textNode("ok"))]),
+    });
+    const { html } = await renderHook(() => frozen);
+    expect(html).toBe("<p><section>ok</section></p>");
   });
 });

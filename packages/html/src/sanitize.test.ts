@@ -186,6 +186,29 @@ describe("sanitizePanelHast — include provenance (#8)", () => {
     expect(elements(out)[0]?.properties).toEqual({ "data-doc": "r" });
   });
 
+  it("drops provenance an untrusted element hides behind a Proxy until sanitizing", () => {
+    let calls = 0;
+    const properties = new Proxy({ "data-doc": "victim" } as Properties, {
+      ownKeys: (target) => (calls++ === 0 ? [] : Reflect.ownKeys(target)),
+    });
+    const out = sanitizePanelHast(root(el("section", properties, [text("x")])));
+    expect(elements(out)[0]?.properties).toEqual({});
+  });
+
+  it("does not mutate a frozen untrusted tree", () => {
+    const frozen = Object.freeze(
+      el("section", Object.freeze({ dataDoc: "victim", "data-doc": "victim" }), [text("x")]),
+    );
+    const out = sanitizePanelHast(root(frozen));
+    expect(elements(out)[0]?.properties).toEqual({});
+  });
+
+  it("does not trust an object whose prototype is a wrapper", () => {
+    const child = Object.create(includeWrapper(includeOf("r"), [text("x")])) as Element;
+    const out = sanitizePanelHast(root(child));
+    expect(JSON.stringify(out)).not.toContain('"data-doc"');
+  });
+
   it("trusts the wrapper object itself, not a copy of it", () => {
     const copy = structuredClone(includeWrapper(includeOf("r"), [text("x")]));
     const out = sanitizePanelHast(root(copy));
