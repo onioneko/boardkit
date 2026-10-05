@@ -1201,3 +1201,36 @@ describe("projectHtml — hook output cannot carry trusted provenance (#8, revie
     expect(html).toBe("<p><section>ok</section></p>");
   });
 });
+
+describe("projectHtml — uncloneable hook output does not leak through its diagnostic", () => {
+  it("names the error without echoing the output (a function's source)", async () => {
+    const leaky: BlockType = {
+      type: "leaky",
+      schema: { type: "object" },
+      project: {
+        html: () =>
+          ({
+            type: "element",
+            tagName: "b",
+            properties: {},
+            children: [],
+            secret: () => "API_KEY_123",
+          }) as unknown as import("hast").Nodes,
+      },
+    };
+    const src = "```leaky\nid: k\n```\n";
+    const doc = parseDoc(src, { blockTypes: new Set(["leaky"]) });
+    const reported: import("@onioneko/boardkit-core").Diagnostic[] = [];
+    const html = await projectHtml(doc, src, new Map(), {
+      blockTypes: new Map([["leaky", leaky]]),
+      report: (d) => reported.push(d),
+    });
+    expect(reported).toHaveLength(1);
+    expect(reported[0]?.code).toBe("E_BLOCK_HOOK_ERROR");
+    expect(reported[0]?.message).toBe(
+      'leaky block "k": "html" hook returned output that cannot be copied (DataCloneError)',
+    );
+    expect(JSON.stringify(reported)).not.toContain("API_KEY_123");
+    expect(html).not.toContain("API_KEY_123");
+  });
+});

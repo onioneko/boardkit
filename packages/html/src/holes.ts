@@ -164,7 +164,8 @@ interface Filled {
  * identity, which a clone does not carry), can change between reads (a getter
  * or a `Proxy`), or is frozen against the projector's own enrichment. Output
  * that cannot be cloned (a `Proxy`, a function) fails soft like a throwing
- * hook: no output, and an `E_BLOCK_HOOK_ERROR` in `hookError`.
+ * hook: no output, and an `E_BLOCK_HOOK_ERROR` in `hookError` that names the
+ * error's type but never quotes the output.
  */
 function detach(piece: ProjectionWalkBlock, projectorId: string): ProjectionWalkBlock {
   if (piece.output === undefined) return piece;
@@ -172,10 +173,14 @@ function detach(piece: ProjectionWalkBlock, projectorId: string): ProjectionWalk
     return { ...piece, output: structuredClone(piece.output) };
   } catch (err) {
     const { block } = piece;
-    const message = err instanceof Error ? err.message : String(err);
+    // Only the error's name, and only when it is a plain identifier: a clone
+    // error's message quotes the offending value (a function's whole source),
+    // and a Proxy trap can throw an error of the hook's own making.
+    const raw = err instanceof Error ? err.name : undefined;
+    const name = typeof raw === "string" && /^[A-Za-z]{1,64}$/.test(raw) ? raw : "Error";
     const hookError = diagnostic(
       "E_BLOCK_HOOK_ERROR",
-      `${block.type} block "${block.blockId}": "${projectorId}" hook returned output that cannot be copied: ${message}`,
+      `${block.type} block "${block.blockId}": "${projectorId}" hook returned output that cannot be copied (${name})`,
       { nodeId: block.blockId },
     );
     return { block, hooked: piece.hooked, output: undefined, raw: piece.raw, hookError };
