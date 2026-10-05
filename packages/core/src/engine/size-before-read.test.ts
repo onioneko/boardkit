@@ -92,12 +92,14 @@ describe("Storage.size: an oversized document is refused before it is read", () 
     expect(reads.get("big")).toBeUndefined();
   });
 
-  it("refGraph, getBlock, patch and intent on it", async () => {
+  it("refGraph, getBlock, docInfo, patch and intent on it", async () => {
     const { engine, reads } = await setup("exact");
     const g = await engine.refGraph("big");
     expect(g.docs).toEqual([]);
     expect(codes(g.diagnostics)).toEqual(["E_DOCUMENT_TOO_LARGE"]);
     expect(await engine.getBlock("big", "c")).toBeUndefined();
+    expect(await engine.docInfo("big")).toBeUndefined();
+    expect(reads.get("big")).toBeUndefined();
     const p = await engine.patch("big", "c", { writer, attrs: { items: [] } });
     expect(p.ok ? undefined : p.rejection.reason).toBe("too-large");
     const i = await engine.applyIntent(
@@ -139,6 +141,7 @@ describe("Storage.size: falling back to a read", () => {
       expect(b.ok).toBe(true);
       expect(b.output).toContain("{{include:big}}");
       expect(await engine.getBlock("big", "c")).toBeUndefined();
+      expect(await engine.docInfo("big")).toBeUndefined();
       const p = await engine.patch("big", "c", { writer, attrs: { items: [] } });
       expect(p.ok ? undefined : p.rejection.reason).toBe("too-large");
       expect(reads.get("big")).toBeGreaterThan(0);
