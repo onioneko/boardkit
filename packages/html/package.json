@@ -61,11 +61,12 @@
     "unist-util-visit": "catalog:"
   },
   "peerDependencies": {
-    "@onioneko/boardkit-core": "workspace:>=0.1.0 <1.0.0"
+    "@onioneko/boardkit-core": "workspace:>=0.3.0 <1.0.0"
   },
   "devDependencies": {
     "@onioneko/boardkit-core": "workspace:^",
     "@types/hast": "catalog:",
+    "@types/mdast": "catalog:",
     "hast-util-from-html": "catalog:",
     "@types/node": "catalog:",
     "typescript": "catalog:",

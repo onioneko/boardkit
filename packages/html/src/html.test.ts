@@ -962,3 +962,130 @@ describe("projectHtml — block values across direct calls", () => {
     expect(second).toContain("Cash 200");
   });
 });
+
+describe("projectHtml — block hooks cannot fake include provenance (#8)", () => {
+  const fakeBlock: BlockType = {
+    type: "fake",
+    schema: { type: "object" },
+    project: {
+      html: (): import("hast").Nodes => ({
+        type: "element",
+        tagName: "section",
+        properties: { "data-doc": "elsewhere", "data-section": "secret", dataDoc: "elsewhere" },
+        children: [
+          {
+            type: "element",
+            tagName: "div",
+            properties: { action: "https://evil.example", method: "post", encType: "text/plain" },
+            children: [{ type: "text", value: "hook text" }],
+          },
+        ],
+      }),
+    },
+  };
+
+  it("drops data-doc/data-section from a hook's section, and keeps them on the include wrapper", async () => {
+    const { tree, values } = await mergedTree(
+      new Map([
+        ["board", "```fake\nid: f\n```\n\n{{include:r#s}}\n"],
+        ["r", "## S {#s}\n\n```fake\nid: g\n```\n"],
+      ]),
+      "board",
+      new Set(["fake"]),
+    );
+    const html = await projectHtml(tree.root.doc, tree.root.src, values, {
+      merged: tree,
+      blockTypes: new Map([["fake", fakeBlock]]),
+    });
+    const sections = elementsOf(html, "section");
+    expect(sections.map((s) => s.properties)).toEqual([{}, { dataDoc: "r", dataSection: "s" }, {}]);
+    expect(html).not.toContain("elsewhere");
+    expect(html).not.toContain("secret");
+    for (const div of elementsOf(html, "div")) expect(div.properties).toEqual({});
+  });
+});
+
+describe("projectHtml — heading anchors (#25)", () => {
+  it("renders the heading without its {#anchor}, which becomes a prefixed id", async () => {
+    const html = await projectProse("# Rules\n\n## Risk limits {#risk-limits}\n\nBody.\n");
+    expect(html).toBe(
+      '<h1>Rules</h1>\n<h2 id="user-content-risk-limits">Risk limits</h2>\n<p>Body.</p>',
+    );
+  });
+
+  it("gives a heading without an anchor no id", async () => {
+    expect(await projectProse("## Plain\n")).toBe("<h2>Plain</h2>");
+  });
+
+  it("keeps hostile or malformed anchors as inert text", async () => {
+    const html = await projectProse(
+      [
+        '## A {#x" onclick="alert(1)}',
+        "## B {#javascript:alert(1)}",
+        "## C {#<script>alert(1)</script>}",
+        "## D {#__proto}",
+        "## E `{#code}`",
+        "## F \\{#esc}",
+        "",
+      ].join("\n"),
+    );
+    expect(unsafeAttributes(html)).toEqual([]);
+    expect(elementsOf(html, "script")).toEqual([]);
+    const ids = ["h2"].flatMap((tag) => elementsOf(html, tag).map((h) => h.properties.id));
+    expect(ids).toEqual([
+      undefined,
+      undefined,
+      undefined,
+      "user-content-__proto",
+      undefined,
+      undefined,
+    ]);
+    expect(html).toContain('<h2>A {#x" onclick="alert(1)}</h2>');
+    expect(html).toContain("<h2>E <code>{#code}</code></h2>");
+    expect(html).toContain("<h2>F {#esc}</h2>");
+  });
+
+  it("never reads an anchor out of a ref's value", async () => {
+    const html = await projectWithValue("## Live {{source:p}}\n", "{#evil}");
+    expect(html).toBe("<h2>Live {#evil}</h2>");
+  });
+
+  it("renders the same heading text and id the parser reads, heading by heading", async () => {
+    const headings = [
+      "## Risk limits {#risk-limits}",
+      "## *Em {#em}*",
+      "## [Link](https://example.com) {#ln}",
+      "## Closed {#closed} ##",
+      "## Spaced {#sp}   ",
+      "## B  *{#bx}*",
+      "## Code `{#c1}`",
+      "## A {#_x_}",
+      "## P {#__proto__}",
+      "## Esc \\{#esc}",
+      "## Ent &#123;#ent}",
+      "## Slash \\\\{#sl}",
+      "## Two {#one}{#two}",
+      "## Mid {#mid} text",
+      "## Plain",
+      "Setext {#st}\n===",
+    ];
+    for (const heading of headings) {
+      const src = `${heading}\n`;
+      const [section] = parseDoc(src, {}).nodes.filter(
+        (n): n is import("@onioneko/boardkit-core").Section =>
+          "sectionId" in n && n.sectionId !== "__preamble__",
+      );
+      const html = await projectProse(src);
+      const [h] = [...elementsOf(html, "h1"), ...elementsOf(html, "h2")];
+      let rendered = "";
+      visit(h as Element, "text", (t: { value: string }) => {
+        rendered += t.value;
+      });
+      expect(rendered, heading).toBe(section?.heading);
+      const anchored = section !== undefined && heading.includes(`{#${section.sectionId}}`);
+      expect(h?.properties.id, heading).toBe(
+        anchored ? `user-content-${section?.sectionId}` : undefined,
+      );
+    }
+  });
+});

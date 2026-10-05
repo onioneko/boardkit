@@ -301,6 +301,9 @@ importers:
       '@types/hast':
         specifier: 'catalog:'
         version: 3.0.5
+      '@types/mdast':
+        specifier: 'catalog:'
+        version: 4.0.4
       '@types/node':
         specifier: 'catalog:'
         version: 24.13.3
