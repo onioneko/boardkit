@@ -43,14 +43,14 @@ stays private and unchanged whatever the caller does with it.</p>
 <div class="tsd-comment tsd-typography"><p>The document's typed blocks, in document order.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/engine/doc-info.ts#L42">packages/core/src/engine/doc-info.ts:42</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/engine/doc-info.ts#L53">packages/core/src/engine/doc-info.ts:53</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="diagnostics"><code class="tsd-tag">Readonly</code><span>diagnostics</span><a href="#diagnostics" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">diagnostics</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-keyword">readonly</span> <a href="Consumer_API.Diagnostic.html" class="tsd-signature-type tsd-kind-interface">Diagnostic</a><span class="tsd-signature-symbol">[]</span></div>
 <div class="tsd-comment tsd-typography"><p>The parse's diagnostics (bad frontmatter, refs or blocks); empty for a clean parse.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/engine/doc-info.ts#L49">packages/core/src/engine/doc-info.ts:49</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/engine/doc-info.ts#L60">packages/core/src/engine/doc-info.ts:60</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="docid"><code class="tsd-tag">Readonly</code><span>doc<wbr/>Id</span><a href="#docid" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">docId</span><span class="tsd-signature-symbol">:</span> <a href="../types/Consumer_API.DocId.html" class="tsd-signature-type tsd-kind-type-alias">DocId</a></div>
@@ -64,7 +64,7 @@ stays private and unchanged whatever the caller does with it.</p>
 <div class="tsd-comment tsd-typography"><p>The document's YAML frontmatter, parsed to a mapping (empty when absent or invalid).</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/engine/doc-info.ts#L24">packages/core/src/engine/doc-info.ts:24</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/engine/doc-info.ts#L28">packages/core/src/engine/doc-info.ts:28</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="sections"><code class="tsd-tag">Readonly</code><span>sections</span><a href="#sections" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">sections</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-keyword">readonly</span> <span class="tsd-signature-symbol">{</span><br/>    <span class="tsd-kind-property">heading</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">;</span><br/>    <span class="tsd-kind-property">level</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">1</span> <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">2</span> <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">3</span> <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">4</span> <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">5</span> <span class="tsd-signature-symbol">|</span> <span class="tsd-signature-type">6</span><span class="tsd-signature-symbol">;</span><br/>    <span class="tsd-kind-property">sectionId</span><span class="tsd-signature-symbol">:</span> <a href="../types/Consumer_API.SectionId.html" class="tsd-signature-type tsd-kind-type-alias">SectionId</a><span class="tsd-signature-symbol">;</span><br/><span class="tsd-signature-symbol">}</span><span class="tsd-signature-symbol">[]</span></div>
@@ -73,18 +73,21 @@ open sections. Content before the first heading has no heading and is not
 listed.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/engine/doc-info.ts#L30">packages/core/src/engine/doc-info.ts:30</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/engine/doc-info.ts#L34">packages/core/src/engine/doc-info.ts:34</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="title"><code class="tsd-tag">Optional</code> <code class="tsd-tag">Readonly</code><span>title</span><a href="#title" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">title</span><span class="tsd-signature-symbol">?:</span> <span class="tsd-signature-type">string</span></div>
 <div class="tsd-comment tsd-typography"><p>The document's title: the frontmatter <code>title</code> when it is a non-blank
-string, otherwise the text of the first level-1 heading (ATX <code>#</code> or
-setext <code>===</code>, with any <code>{#anchor}</code> removed). A heading inside a fence, a
-blockquote or a list is not a document heading and is never the title.
-Absent when there is neither, or the first level-1 heading is empty.</p>
+string (trimmed), otherwise the text of the first non-empty level-1
+heading (ATX <code>#</code> or setext <code>===</code>, with any <code>{#anchor}</code> removed). A heading
+inside a fence, a blockquote or a list is not a document heading and is
+never the title. Absent when there is neither.</p>
+<p>Heading text is plain text, not rendered markdown: emphasis and link
+markup are dropped, an image contributes nothing (its alt text is not
+kept), and a <code>{{source:…}}</code> ref stays as its raw, unresolved token.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/engine/doc-info.ts#L22">packages/core/src/engine/doc-info.ts:22</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/engine/doc-info.ts#L26">packages/core/src/engine/doc-info.ts:26</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="version"><code class="tsd-tag">Readonly</code><span>version</span><a href="#version" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">version</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">string</span></div>
