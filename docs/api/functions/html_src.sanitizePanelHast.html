@@ -20,8 +20,9 @@
 itself (with <a href="html_src.projectHast.html" class="tsd-kind-function">projectHast</a> or otherwise) and wants exactly the html
 projector's policy:</p>
 <ol>
-<li><code>data-doc</code>/<code>data-section</code> are removed from every element that is not an
-<a href="html_src.includeWrapper.html" class="tsd-kind-function">includeWrapper</a>, so hook output cannot fake include provenance;</li>
+<li>the tree is copied as plain data, read once, and <code>data-doc</code>/<code>data-section</code>
+are kept only on an <a href="html_src.includeWrapper.html" class="tsd-kind-function">includeWrapper</a> itself, so content that did
+not come from the projector's own include path cannot fake provenance;</li>
 <li><code>href</code>/<code>src</code> schemes are lowercased, so <code>HTTPS:</code> and <code>MAILTO:</code> URLs pass
 the case-sensitive scheme check;</li>
 <li>the tree is sanitized with <a href="html_src.panelSchema.html" class="tsd-kind-function">panelSchema</a>;</li>
@@ -34,7 +35,7 @@ the case-sensitive scheme check;</li>
 <h4 class="tsd-parameters-title">Parameters</h4>
 <ul class="tsd-parameter-list">
 <li><span><span class="tsd-kind-parameter">tree</span>: <span class="tsd-signature-type">Root</span></span>
-<div class="tsd-comment tsd-typography"><p>The unsanitized tree. It may be mutated; use the return value.</p>
+<div class="tsd-comment tsd-typography"><p>The unsanitized tree. It is not modified.</p>
 </div></li></ul></div>
 <h4 class="tsd-returns-title">Returns <span class="tsd-signature-type">Root</span></h4><p>A new, sanitized tree.</p>
 
@@ -45,7 +46,7 @@ the case-sensitive scheme check;</li>
 
 </div></div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/html/src/sanitize.ts#L218">packages/html/src/sanitize.ts:218</a></li></ul></aside></div></li></ul></section></div>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/html/src/sanitize.ts#L268">packages/html/src/sanitize.ts:268</a></li></ul></aside></div></li></ul></section></div>
 <div class="col-sidebar">
 <div class="page-menu">
 <div class="tsd-navigation settings">

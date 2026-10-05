@@ -19,9 +19,11 @@
 <div class="tsd-comment tsd-typography"><p>The provenance wrapper around one expanded include: a <code>&lt;section&gt;</code> carrying
 the include's <code>data-doc</code> and, for a section slice, <code>data-section</code>, with
 <code>children</code> inside it. It is the only element whose provenance attributes
-<a href="html_src.sanitizePanelHast.html" class="tsd-kind-function">sanitizePanelHast</a> keeps, so a block hook cannot make its output look
-as though it came from another document. The trust is in this exact object:
-a copy of it (<code>structuredClone</code>, a spread) is an ordinary <code>section</code> again.</p>
+<a href="html_src.sanitizePanelHast.html" class="tsd-kind-function">sanitizePanelHast</a> keeps. The trust is in this exact object: a copy
+of it (<code>structuredClone</code>, a spread, an object whose prototype it is) is an
+ordinary <code>section</code> again. Call it from the projector's own include path; a
+block hook may call it too, but <a href="html_src.projectHast.html" class="tsd-kind-function">projectHast</a> copies hook output, so
+the hook's wrapper loses its provenance before it reaches the tree.</p>
 </div>
 <div class="tsd-parameters">
 <h4 class="tsd-parameters-title">Parameters</h4>
@@ -41,7 +43,7 @@ a copy of it (<code>structuredClone</code>, a spread) is an ordinary <code>secti
 
 </div></div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/html/src/sanitize.ts#L172">packages/html/src/sanitize.ts:172</a></li></ul></aside></div></li></ul></section></div>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/html/src/sanitize.ts#L177">packages/html/src/sanitize.ts:177</a></li></ul></aside></div></li></ul></section></div>
 <div class="col-sidebar">
 <div class="page-menu">
 <div class="tsd-navigation settings">

@@ -83,8 +83,10 @@ in place; a section include is wrapped with its provenance:
 
 The full `{ docId, sectionId }` provenance lives on the merged nodes themselves and on the
 html projector's `data-*` attributes. Only the projector's own include wrappers keep `data-doc`
-and `data-section`: the sanitizer removes them from block hook output, so a hook cannot make its
-markup look as though it came from another document.
+and `data-section`: block hook output is copied as plain data before it joins the tree, and the
+sanitizer removes provenance from everything but those wrappers, so nothing a hook returns can
+claim to come from another document. Code running in-process outside the hook contract (patching
+globals, for instance) is out of scope.
 
 ### Expansion limit
 
@@ -356,6 +358,18 @@ heading, in plain text:
 rule: it splits a trailing `{#id}` off a heading's plain text, in time linear in the text's length.
 A projector that renders headings from its own markdown parse applies it to the heading's last
 run of plain text, as the parser does.
+
+Two limits of the html projection:
+
+- **A ref next to `_` or `*` can tip the result.** The html projector parses the heading with each
+  resolved `{{source:…}}` replaced by an alphanumeric placeholder, while the parser sees the
+  reference's braces. Emphasis delimiters touching a reference can therefore pair up differently,
+  so in a heading such as `## {{source:p}}_a {#b_}` the parser finds no anchor and the html
+  projection finds one. Keep `_` and `*` away from a reference in a heading that carries an anchor.
+- **Ids can repeat.** Anchors are rendered as written, so two headings with the same anchor, a
+  section included twice, or an anchor such as `{#fn-1}` next to a footnote (whose item is also
+  `user-content-fn-1`) give one page duplicate ids, and an in-page link goes to the first. It is
+  cosmetic, and no script is involved; choose anchors that do not repeat.
 
 ## Projection middleware
 
