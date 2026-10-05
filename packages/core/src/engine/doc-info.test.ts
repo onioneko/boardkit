@@ -102,6 +102,41 @@ describe("docInfo (#16)", () => {
     expect((await engine.docInfo("only"))?.title).toBe("Only frontmatter");
   });
 
+  it("trims a frontmatter title, as heading text is trimmed (M1)", async () => {
+    const engine = await setup({
+      padded: "---\ntitle: '  Padded  '\n---\n\n# H\n",
+      block: "---\ntitle: |\n  line1\n  line2\n---\n\n# H\n",
+    });
+    expect((await engine.docInfo("padded"))?.title).toBe("Padded");
+    expect((await engine.docInfo("block"))?.title).toBe("line1\nline2");
+  });
+
+  it("skips an empty h1 and takes the first h1 with text (M2)", async () => {
+    const engine = await setup({
+      bare: "#\n\n# Second\n",
+      anchorOnly: "# {#top}\n\n# Second\n",
+      allEmpty: "#\n\nBody.\n",
+    });
+    expect((await engine.docInfo("bare"))?.title).toBe("Second");
+    expect((await engine.docInfo("anchorOnly"))?.title).toBe("Second");
+    const info = await engine.docInfo("allEmpty");
+    expect(info).toBeDefined();
+    expect(info !== undefined && "title" in info).toBe(false);
+  });
+
+  it("fails soft when copying the parse throws: undefined, not a rejection (M3)", async () => {
+    const engine = await setup({ d: "---\nmeta: {a: 1}\n---\n\n# T\n" });
+    const spy = vi.spyOn(globalThis, "structuredClone").mockImplementation(() => {
+      throw new RangeError("Maximum call stack size exceeded");
+    });
+    try {
+      await expect(engine.docInfo("d")).resolves.toBeUndefined();
+    } finally {
+      spy.mockRestore();
+    }
+    expect((await engine.docInfo("d"))?.title).toBe("T");
+  });
+
   it("has no title when there is neither a frontmatter title nor an h1", async () => {
     const engine = await setup({ d: "## Only h2\n\nBody.\n" });
     const info = await engine.docInfo("d");

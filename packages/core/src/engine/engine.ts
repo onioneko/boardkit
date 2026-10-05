@@ -550,15 +550,17 @@ export interface Engine {
    * the engine has written or projected costs no parse, and any other is parsed
    * once (and cached) like a projection would.
    *
-   * The title is the frontmatter `title` when it is a non-blank string,
-   * otherwise the first level-1 heading (see {@link DocInfo.title}). Headings
-   * carry their text without the `{#anchor}`, and the anchor is the section id.
+   * The title is the frontmatter `title` when it is a non-blank string
+   * (trimmed), otherwise the first non-empty level-1 heading (see
+   * {@link DocInfo.title}). Headings carry their plain text without the
+   * `{#anchor}`, and the anchor is the section id; ids are not guaranteed
+   * unique.
    * @param docId The document to summarize.
    * @returns A copy of the summary (the cached parse is never handed out), or
    *   `undefined` when the document does not exist or the id is invalid, the
    *   document is over {@link EngineOptions.maxDocumentBytes} or a
-   *   {@link EngineOptions.complexityLimits} limit, or its parse threw —
-   *   treated as absent, fail-soft, like {@link Engine.getBlock}.
+   *   {@link EngineOptions.complexityLimits} limit, or its parse (or the copy
+   *   of it) threw — treated as absent, fail-soft, like {@link Engine.getBlock}.
    * @example
    * ```ts
    * const ids = await engine.listDocs();
@@ -1563,7 +1565,13 @@ export function createEngine(opts: EngineOptions): Engine {
       const read = await readParsed(validated.id);
       if (read === undefined) return undefined;
       // The parse is shared through the cache: the summary copies out of it.
-      return summarizeDoc(validated.id, docVersion(read.src), read.parsed);
+      // The copy is inside the fail-soft boundary too: frontmatter nested
+      // deeper than the clone's stack reads as absent, not as a rejection.
+      try {
+        return summarizeDoc(validated.id, docVersion(read.src), read.parsed);
+      } catch {
+        return undefined;
+      }
     },
 
     listDocs() {

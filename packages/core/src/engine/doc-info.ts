@@ -14,10 +14,14 @@ export interface DocInfo {
   readonly version: string;
   /**
    * The document's title: the frontmatter `title` when it is a non-blank
-   * string, otherwise the text of the first level-1 heading (ATX `#` or
-   * setext `===`, with any `{#anchor}` removed). A heading inside a fence, a
-   * blockquote or a list is not a document heading and is never the title.
-   * Absent when there is neither, or the first level-1 heading is empty.
+   * string (trimmed), otherwise the text of the first non-empty level-1
+   * heading (ATX `#` or setext `===`, with any `{#anchor}` removed). A heading
+   * inside a fence, a blockquote or a list is not a document heading and is
+   * never the title. Absent when there is neither.
+   *
+   * Heading text is plain text, not rendered markdown: emphasis and link
+   * markup are dropped, an image contributes nothing (its alt text is not
+   * kept), and a `{{source:…}}` ref stays as its raw, unresolved token.
    */
   readonly title?: string;
   /** The document's YAML frontmatter, parsed to a mapping (empty when absent or invalid). */
@@ -29,11 +33,18 @@ export interface DocInfo {
    */
   readonly sections: readonly {
     /**
-     * The section's id, as `{{include:doc#id}}` addresses it: the heading's
-     * explicit `{#anchor}` when it has one, otherwise its slug.
+     * The section's id: the heading's explicit `{#anchor}` when it has one,
+     * otherwise its slug. Ids are not guaranteed unique or non-empty: two
+     * headings may carry the same explicit anchor (or an anchor equal to
+     * another heading's slug), and an empty heading has an empty id. Key a
+     * list by position, not by this id, and expect `{{include:doc#id}}` to
+     * address the first section with that id.
      */
     readonly sectionId: SectionId;
-    /** The heading text, without its `{#anchor}`. */
+    /**
+     * The heading text, without its `{#anchor}`: plain text with markup
+     * dropped and `{{source:…}}` refs left unresolved (see {@link DocInfo.title}).
+     */
     readonly heading: string;
     /** The heading depth, 1–6. */
     readonly level: 1 | 2 | 3 | 4 | 5 | 6;
@@ -54,7 +65,9 @@ const PREAMBLE_ID = "__preamble__";
 
 /**
  * Summarize a parse as a {@link DocInfo}, copying everything out of it so the
- * (shared, cached) parse cannot be reached through the result.
+ * (shared, cached) parse cannot be reached through the result. The copy can
+ * throw on pathological frontmatter (nesting deeper than `structuredClone`'s
+ * stack), so callers treat a throw as an unreadable document.
  * @param docId The document's id.
  * @param version The version of the source `parsed` was parsed from.
  * @param parsed The parse.
@@ -85,13 +98,15 @@ export function summarizeDoc(docId: DocId, version: string, parsed: ParsedDoc): 
   };
 }
 
-/** Frontmatter `title` (a non-blank string) wins; otherwise the first level-1 heading's text. */
+/**
+ * Frontmatter `title` (a non-blank string, trimmed) wins; otherwise the text of
+ * the first non-empty level-1 heading.
+ */
 function titleOf(
   frontmatter: Readonly<Record<string, unknown>>,
   sections: readonly { readonly heading: string; readonly level: number }[],
 ): string | undefined {
   const declared = frontmatter.title;
-  if (typeof declared === "string" && declared.trim() !== "") return declared;
-  const heading = sections.find((s) => s.level === 1)?.heading;
-  return heading === undefined || heading === "" ? undefined : heading;
+  if (typeof declared === "string" && declared.trim() !== "") return declared.trim();
+  return sections.find((s) => s.level === 1 && s.heading !== "")?.heading;
 }
