@@ -141,8 +141,8 @@ document larger than `maxDocumentBytes`: **256 KiB** of UTF-8 by default, export
   - an include of it stays verbatim `{{include:…}}` text, like an include of a missing document,
     the rest of the board projects normally, and the document is left out of `versions`;
   - `refGraph` on it returns no documents, only the diagnostic;
-  - `getBlock` treats it as absent, and patches and intents against it are rejected with reason
-    `too-large`;
+  - `getBlock` and `docInfo` treat it as absent, and patches and intents against it are rejected
+    with reason `too-large`;
   - `getDoc` still returns its raw source.
 
   When the storage implements `Storage.size`, a stored document over the limit is diagnosed from
@@ -235,10 +235,12 @@ is caught, as described next.
 Whatever the limits, a parse that throws never escapes the engine. A write is rejected with
 reason `validation` and an `E_PARSE_FAILED` diagnostic. A stored document that fails to parse is
 treated as over a limit: its projection returns `ok: false`, an include of it stays verbatim, it
-contributes no include edges to scoped subscriptions, and `getBlock` treats it as absent. The
+contributes no include edges to scoped subscriptions, and `getBlock` and `docInfo` treat it as
+absent. The
 engine remembers the failure by content, so the document is not parsed again until it changes.
 
-The engine parses each document once per content: projections, `refGraph` and `getBlock` reuse
+The engine parses each document once per content: projections, `refGraph`, `getBlock` and
+`docInfo` reuse
 the parse of a document that has not changed since it was last read, through includes too, so
 repeated projections do not pay for parsing again. A write keeps the parse it made of the content
 it stored, so the next read of a document the engine wrote parses nothing, and content already
@@ -292,6 +294,33 @@ Values reach you on the side instead:
 
 See [Sources](sources.md) for where these values come from — the `Source` port, `{{source:…}}`
 prose refs versus a block's own `sources` declaration, and canonical keys.
+
+## Reading a document without projecting it
+
+`engine.docInfo(docId)` summarizes one document for a host that lists or labels documents: its
+title, frontmatter, headings and blocks, without a projection and without parsing again.
+
+```ts
+const info = await engine.docInfo("fin");
+info?.title;       // "Family Finance"
+info?.sections;    // [{ sectionId: "family-finance", heading: "Family Finance", level: 1 }, …]
+info?.blocks;      // [{ blockId: "dec-macbook", type: "status" }, …]
+```
+
+- **Title.** The frontmatter `title` when it is a non-blank string, otherwise the text of the first
+  level-1 heading, ATX (`#`) or setext (`===`). A heading inside a fence, blockquote or list is
+  not a document heading, so it is never the title. Without either, `title` is absent.
+- **Headings.** `sections` lists the top-level headings in document order. The text has its
+  `{#anchor}` removed, and the anchor, when there is one, is the `sectionId` (otherwise the slug),
+  so `## Now {#now}` is `{ sectionId: "now", heading: "Now", level: 2 }`. Content before the first
+  heading is not listed.
+- **Diagnostics.** `diagnostics` holds the parse's own, such as invalid frontmatter YAML.
+- **Cost.** The summary comes from the engine's parse cache, like `getBlock`: a document the engine
+  wrote or has already projected costs no parse, and any other is parsed once and cached.
+- **Absent.** `docInfo` returns `undefined` for a missing document, an invalid id, a document over
+  `maxDocumentBytes` or a complexity limit, and one whose parse threw, the same as `getBlock`.
+  `getDoc` still returns the raw source of all but the first two.
+- **A copy.** The result is a fresh copy, so changing it changes nothing the engine holds.
 
 ## Projection middleware
 
@@ -379,9 +408,10 @@ const cache = createProjectionWalkCache();
 const out = walkProjection({ node, values: input.values, projectorId: "md", cache }, handlers);
 ```
 
-All four handlers are required — there is no default for `onProse`, because there is no generic
-identity from `string` to an arbitrary `T`; a projector says explicitly what an untouched run of
-source becomes:
+The four handlers below are required — there is no default for `onProse`, because there is no
+generic identity from `string` to an arbitrary `T`; a projector says explicitly what an untouched
+run of source becomes. A fifth, `onUnresolvedSource`, is optional (see
+[Stale and unresolved references](#stale-and-unresolved-references)):
 
 ```ts
 const handlers: ProjectionWalkHandlers<string> = {
@@ -416,12 +446,37 @@ import { canonicalKey } from "@onioneko/boardkit-core";
 onSource: (value, ref, ctx) => ctx.values.get(canonicalKey(ref))?.value ?? value,
 ```
 
+### Stale and unresolved references
+
+By default a `{{source:…}}` reference whose value is stale, or that did not resolve at all, never
+reaches `onSource`: its span stays verbatim, inside the surrounding `onProse` run, so a projector
+cannot render fabricated data by accident. That is the right fallback for a projector that emits
+a string. A projector that builds a live, structured view needs a keyed piece for every reference
+instead, so that a later value update can fill it, and it must tell a stale reference from prose
+that happens to read `{{source:x}}`. It supplies the optional fifth handler:
+
+```ts
+onUnresolvedSource: (ref, state, raw, ctx) =>
+  ({ kind: "pending", source: ref.source, stale: state.stale, raw }),
+```
+
+- `state` is `{ stale: true, value }` when the resolution degraded, where `value` is the source's
+  degradation marker (not real data), and `{ stale: false }` with no `value` when the projection
+  holds no value for the reference.
+- `raw` is the reference's verbatim source, `{{` to `}}`. Returning it reproduces what a walk
+  without the handler emits.
+- Param-bearing references reach it too, with `ref.params` set.
+- The handler changes only what the span becomes. `ctx.hookValues`, the record block hooks
+  receive, still leaves stale and missing values out, so a block hook renders its own fallback
+  and never sees a placeholder.
+
 ### End to end: a `json` projector
 
 [`examples/05-custom-projector.ts`](../../examples/05-custom-projector.ts) registers a `json`
 projector: one record per block, reading each type's own `json` hook when it has one and falling
-back to the block's attrs when it does not; prose, refs, and includes contribute nothing to the
-assembled array, so those three handlers return `undefined`. Run it with
+back to the block's attrs when it does not, plus one record per `{{source:…}}` reference, including
+one with no value, through `onUnresolvedSource`. Prose and includes contribute nothing to the
+assembled array, so those handlers return `undefined`. Run it with
 `pnpm example 05-custom-projector.ts` (see [`examples/README.md`](../../examples/README.md)).
 
 It also demonstrates why `textProjector` is exported from `@onioneko/boardkit-core`: passing `projectors`
