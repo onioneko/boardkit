@@ -10,5 +10,8 @@
   "tsconfig": "tsconfig.base.json",
   "includeVersion": true,
   "gitRevision": "main",
-  "exclude": ["**/*.test.ts"]
+  "disableGit": true,
+  "sourceLinkTemplate": "https://github.com/onioneko/boardkit/blob/{gitRevision}/packages/{path}#L{line}",
+  "exclude": ["**/*.test.ts"],
+  "plugin": ["./scripts/typedoc-local-source-links.mjs"]
 }
