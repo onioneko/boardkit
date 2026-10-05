@@ -16,7 +16,8 @@ same shared document, `fin.md`, sitting beside these scripts.
   schema, one affordance, one transition, and a text projection.
 - `05-custom-projector.ts` — a custom `json` projector built on the public
   `walkProjectionParts` walk, consulting each block's own hook and falling
-  back to its attrs.
+  back to its attrs, and keying a ref with no value through
+  `onUnresolvedSource`.
 
 ## Run
 

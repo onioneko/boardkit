@@ -64,6 +64,7 @@ import {
   type Writer,
   writeDoc as writeDocPipeline,
 } from "../write/pipeline.js";
+import { type DocInfo, summarizeDoc } from "./doc-info.js";
 import { createParseCache } from "./parse-cache.js";
 import { docVersion } from "./version.js";
 
@@ -77,6 +78,8 @@ import { docVersion } from "./version.js";
  * resolved values. The merged tree is handed to projectors through
  * `options.merged` (projectors that ignore it are unaffected).
  */
+
+export type { DocInfo } from "./doc-info.js";
 
 /** Bound for the engine-internal merge cache (a bounded FIFO Map). */
 const MERGE_CACHE_MAX = 64;
@@ -541,6 +544,30 @@ export interface Engine {
     | { readonly attrs: Record<string, unknown>; readonly type: string; readonly version: string }
     | undefined
   >;
+  /**
+   * Read a document's title, frontmatter, headings and blocks without parsing
+   * it again: the summary is built from the engine's parse cache, so a document
+   * the engine has written or projected costs no parse, and any other is parsed
+   * once (and cached) like a projection would.
+   *
+   * The title is the frontmatter `title` when it is a non-blank string
+   * (trimmed), otherwise the first non-empty level-1 heading (see
+   * {@link DocInfo.title}). Headings carry their plain text without the
+   * `{#anchor}`, and the anchor is the section id; ids are not guaranteed
+   * unique.
+   * @param docId The document to summarize.
+   * @returns A copy of the summary (the cached parse is never handed out), or
+   *   `undefined` when the document does not exist or the id is invalid, the
+   *   document is over {@link EngineOptions.maxDocumentBytes} or a
+   *   {@link EngineOptions.complexityLimits} limit, or its parse (or the copy
+   *   of it) threw — treated as absent, fail-soft, like {@link Engine.getBlock}.
+   * @example
+   * ```ts
+   * const ids = await engine.listDocs();
+   * const titles = await Promise.all(ids.map(async (id) => (await engine.docInfo(id))?.title ?? id));
+   * ```
+   */
+  docInfo(docId: string): Promise<DocInfo | undefined>;
   /** @returns Every document id currently in the workspace (sorted, untyped strings). */
   listDocs(): Promise<string[]>;
   /**
@@ -998,6 +1025,30 @@ export function createEngine(opts: EngineOptions): Engine {
     if (hit === undefined) return undefined;
     parseHashByDoc.set(docId, hit.hash);
     return hit.doc;
+  }
+
+  /**
+   * Read a stored document and its parse, through the cache, for the
+   * single-document reads (`getBlock`, `docInfo`). `undefined` when the
+   * document does not exist, is over the size or a complexity limit (checked
+   * before the read when the storage can size it, and never parsed), or its
+   * parse threw — fail-soft, treated as absent.
+   */
+  async function readParsed(
+    id: DocId,
+  ): Promise<{ readonly src: string; readonly parsed: ParsedDoc } | undefined> {
+    if ((await sizeOverLimit(opts.storage, id, maxDocumentBytes)) !== undefined) return undefined;
+    const src = await opts.storage.read(id);
+    if (src === undefined) return undefined;
+    const cached = cachedParse(id, src);
+    if (cached !== undefined) return { src, parsed: cached };
+    if (exceedsDocumentLimit(src, maxDocumentBytes)) return undefined;
+    if (complexityOf(id, src) !== undefined) return undefined;
+    try {
+      return { src, parsed: parseCached(id, src) };
+    } catch {
+      return undefined; // fail-soft: an unparseable document reads as absent
+    }
   }
 
   /**
@@ -1499,25 +1550,28 @@ export function createEngine(opts: EngineOptions): Engine {
       if (!vDoc.ok) return undefined;
       const vBlock = tryBlockId(blockId);
       if (!vBlock.ok) return undefined;
-      if ((await sizeOverLimit(opts.storage, vDoc.id, maxDocumentBytes)) !== undefined) {
-        return undefined;
-      }
-      const src = await opts.storage.read(vDoc.id);
-      if (src === undefined) return undefined;
-      let parsed = cachedParse(vDoc.id, src);
-      if (parsed === undefined) {
-        if (exceedsDocumentLimit(src, maxDocumentBytes)) return undefined;
-        if (complexityOf(vDoc.id, src) !== undefined) return undefined;
-        try {
-          parsed = parseCached(vDoc.id, src);
-        } catch {
-          return undefined; // fail-soft: an unparseable document has no blocks
-        }
-      }
+      const read = await readParsed(vDoc.id);
+      if (read === undefined) return undefined;
+      const { src, parsed } = read;
       const block = parsed.nodes.find((n): n is Block => "blockId" in n && n.blockId === vBlock.id);
       if (block === undefined) return undefined;
       // The parse is shared through the cache: hand out a copy of the attrs.
       return { attrs: structuredClone(block.attrs), type: block.type, version: docVersion(src) };
+    },
+
+    async docInfo(docId) {
+      const validated = tryDocId(docId);
+      if (!validated.ok) return undefined;
+      const read = await readParsed(validated.id);
+      if (read === undefined) return undefined;
+      // The parse is shared through the cache: the summary copies out of it.
+      // The copy is inside the fail-soft boundary too: frontmatter nested
+      // deeper than the clone's stack reads as absent, not as a rejection.
+      try {
+        return summarizeDoc(validated.id, docVersion(read.src), read.parsed);
+      } catch {
+        return undefined;
+      }
     },
 
     listDocs() {

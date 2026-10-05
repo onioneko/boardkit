@@ -31,10 +31,43 @@ function markdownFiles(dir: string): string[] {
   return out;
 }
 
-function timed(fn: () => unknown): number {
-  const started = performance.now();
-  fn();
-  return performance.now() - started;
+/**
+ * The number of character reads `documentComplexityDiagnostic` makes on `src`:
+ * every string method the scanner calls on its input is counted, and a
+ * `slice` or `startsWith` counts the characters it covers.
+ */
+function stepsOf(src: string): number {
+  let steps = 0;
+  const counted = {
+    get length(): number {
+      return src.length;
+    },
+    charCodeAt(i: number): number {
+      steps += 1;
+      return src.charCodeAt(i);
+    },
+    charAt(i: number): string {
+      steps += 1;
+      return src.charAt(i);
+    },
+    codePointAt(i: number): number | undefined {
+      steps += 1;
+      return src.codePointAt(i);
+    },
+    slice(start?: number, end?: number): string {
+      const out = src.slice(start, end);
+      steps += Math.max(1, out.length);
+      return out;
+    },
+    startsWith(search: string, at?: number): boolean {
+      steps += Math.max(1, search.length);
+      return src.startsWith(search, at);
+    },
+  };
+  const result = documentComplexityDiagnostic("d", counted as unknown as string, limits, "read");
+  // The stand-in must not change the outcome.
+  expect(result).toEqual(check(src));
+  return steps;
 }
 
 describe("documentComplexityDiagnostic", () => {
@@ -414,35 +447,36 @@ describe("documentComplexityDiagnostic", () => {
     expect(refused).toEqual([]);
   });
 
-  it("scans in linear time", () => {
+  it("scans in linear time (counted string accesses, not wall-clock time)", () => {
     // Same byte count, very different shapes: a hostile document must not cost
-    // more per byte to scan than plain prose (each is within the limits, so the
-    // whole input is scanned). Each time is the fastest of several runs, so a
-    // busy machine adds noise to neither side of a ratio.
-    const size = 2 * 1024 * 1024;
-    const fill = (unit: string): string => unit.repeat(Math.floor(size / unit.length));
-    const prose = fill("lorem ipsum dolor sit amet\n");
-    const nested = fill(`${"> ".repeat(32)}*a* _b_ ~c~ [a]\n`);
-    const indented = fill(`${" ".repeat(150)}x\n`);
-    const brackets = fill(`${"[".repeat(30)}${"]".repeat(30)}\n`);
-    const delims = fill(`${"*".repeat(30)}a${"*".repeat(30)} ${"_".repeat(60)}\n`);
-    const fastest = (src: string): number => {
-      let best = Number.POSITIVE_INFINITY;
-      for (let k = 0; k < 5; k += 1)
-        best = Math.min(
-          best,
-          timed(() => check(src)),
-        );
-      return Math.max(best, 0.5);
+    // more per byte to scan than a bounded constant (each is within the limits,
+    // so the whole input is scanned). The cost is the number of character
+    // reads the scanner makes, counted through a string stand-in, so the
+    // assertion is deterministic and cannot flake on a busy machine.
+    const size = 64 * 1024;
+    const fill = (unit: string, bytes = size): string =>
+      unit.repeat(Math.floor(bytes / unit.length));
+    const shapes: Record<string, string> = {
+      prose: "lorem ipsum dolor sit amet\n",
+      nested: `${"> ".repeat(32)}*a* _b_ ~c~ [a]\n`,
+      indented: `${" ".repeat(150)}x\n`,
+      brackets: `${"[".repeat(30)}${"]".repeat(30)}\n`,
+      delims: `${"*".repeat(30)}a${"*".repeat(30)} ${"_".repeat(60)}\n`,
+      fenced: "```\ncode *a* [b\n```\n",
     };
-    const baseline = fastest(prose);
-    for (const s of [nested, indented, brackets, delims]) {
-      expect(check(s)).toBeUndefined();
-      expect(fastest(s) / baseline).toBeLessThan(20);
+    for (const [name, unit] of Object.entries(shapes)) {
+      const src = fill(unit);
+      expect({ name, d: check(src) }).toEqual({ name, d: undefined });
+      const perChar = stepsOf(src) / src.length;
+      expect({ name, perChar: perChar <= 12 }).toEqual({ name, perChar: true });
+      // Doubling the input doubles the reads: a linear scan of a repeated unit
+      // lands within a fraction of a percent of 2, and even a small quadratic
+      // term (n²/10⁶ extra reads) pushes the ratio past 2.02.
+      const twice = fill(unit, 2 * size);
+      const ratio = stepsOf(twice) / stepsOf(src);
+      expect({ name, ratio: Math.abs(ratio - 2) < 0.005 }).toEqual({ name, ratio: true });
     }
-    // Doubling the input roughly doubles the time.
-    expect(fastest(nested + nested) / fastest(nested)).toBeLessThan(4);
-  }, 60_000);
+  });
 });
 
 describe("resolveComplexityLimits", () => {

@@ -78,8 +78,8 @@ it, or `undefined` when the document is missing or its size is unknown. Both shi
 implement it (`createFsStorage` with a `stat`).
 
 When it is there, the engine calls it before reading a document it may have to refuse: the board
-of a projection, every document an include graph reaches, `getBlock`, and the document a patch or
-an intent targets. A document whose size is over `maxDocumentBytes` is diagnosed with
+of a projection, every document an include graph reaches, `getBlock`, `docInfo`, and the document
+a patch or an intent targets. A document whose size is over `maxDocumentBytes` is diagnosed with
 `E_DOCUMENT_TOO_LARGE` exactly as if it had been read, but its bytes never enter memory. A size
 within the limit is followed by the usual read, which measures the source itself. A storage
 without `size`, a `size` that returns `undefined`, and a `size` that throws all fall back to
