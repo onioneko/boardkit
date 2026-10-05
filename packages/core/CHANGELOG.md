@@ -1,5 +1,28 @@
 # @onioneko/boardkit-core
 
+## 0.3.0
+
+### Minor Changes
+
+- 76b4604: Helpers for structured projectors, and heading anchors in HTML. The new exports are additive.
+
+  - **html:** `projectHast(walk, handlers)` projects one node to unsanitized hast, with every reference, block and include left as a hole the caller fills (`HastHoleHandlers`, with the `SourceHole`, `UnresolvedHole`, `BlockHole` and `IncludeHole` kinds). `sanitizePanelHast(tree)` is the html projector's whole sanitize pass (it does not modify its input), `panelAttributeNames()` lists the schema's allowed attribute names without value constraints, and `includeWrapper(include, children)` builds the include provenance wrapper. `projectHtml` is built on these, and its output is unchanged except as listed below.
+  - **core:** `splitHeadingAnchor(text)` splits a trailing `{#anchor}` off heading text, the rule the parser reads section ids with.
+
+  Behaviour changes:
+
+  - **html:** a heading's `{#anchor}` no longer renders as text. It is removed from the heading and becomes its `id`, prefixed as `user-content-…`.
+  - **html:** `data-doc` and `data-section` survive only on include wrappers built by `includeWrapper` on the projector's include path. Block hook output is copied as plain data before it joins the tree, so nothing a hook returns can carry provenance, not even a wrapper the hook built with `includeWrapper` itself. Hook output that cannot be copied (a `Proxy`, a function) renders as the block's escaped source with `E_BLOCK_HOOK_ERROR`, like a throwing hook.
+  - **html:** `panelSchema()` no longer allows `action`, `method` or `encType` on any element.
+  - **html:** diagnostics from block hooks (`E_BLOCK_HOOK_ERROR`) are reported in document order, including blocks in included documents.
+  - **html:** the peer range on `@onioneko/boardkit-core` is now `>=0.3.0 <1.0.0`.
+  - **core:** a heading's `{#anchor}` is read only when it is written literally in the heading's last run of plain text. An anchor in a code span (`` `{#id}` ``), split by inline formatting (`{#_x_}`), escaped (`\{#id}`) or written with a character reference is heading text, and the section id is the slug. Ids of such headings change accordingly.
+
+- bbe51bf: Read-side additions. They are additive for consumers; a hand-written `Engine` implementation (a mock, for example) must add `docInfo`.
+
+  - `engine.docInfo(docId)` returns a document's title, frontmatter, headings and blocks, plus its parse diagnostics, as a new `DocInfo` type. It reads through the engine's parse cache, so a document the engine wrote or projected costs no parse. The title is a non-blank frontmatter `title` (trimmed), otherwise the first non-empty level-1 heading (ATX or setext). Heading text is plain text with its `{#anchor}` removed, and the anchor is the section id; ids are not guaranteed unique. A missing, invalid, oversized, over-complex or unparseable document gives `undefined`.
+  - `ProjectionWalkHandlers` gains an optional `onUnresolvedSource(ref, state, raw, ctx)`. A `{{source:…}}` span whose value is stale or missing reaches it, so a structured projector can key every reference. Without it, such a span stays verbatim prose as before. `hookValues` is unchanged, so block hooks still never see a stale or missing value.
+
 ## 0.2.0
 
 ### Minor Changes
