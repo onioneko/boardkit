@@ -251,6 +251,16 @@ describe("chunked parse", () => {
       }
     });
 
+    it("link and footnote labels are separate: a link definition does not cover a footnote call (regression)", () => {
+      const cache = newCache();
+      for (const doc of [
+        "Note[^R&amp;D].\n- [R&amp;D]: /rd\n## sub\n- [^R&amp;D]: footnote\n",
+        "Note[^x].\n[x]: /u\n## sub\n[^x]: footnote\n",
+      ]) {
+        expect(same(cache, doc).whole).toBe("definitions");
+      }
+    });
+
     it("a label broken over block quote lines still counts as used", () => {
       const cache = newCache();
       expect(

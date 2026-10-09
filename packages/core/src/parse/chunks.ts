@@ -101,7 +101,10 @@ interface Chunk {
   readonly root: Root | undefined;
   /** It ends in a leaf block a following heading line could change. */
   readonly open: boolean;
-  /** Label keys ({@link labelKey}) of its link and footnote definitions. */
+  /**
+   * Label keys ({@link labelKey}) of its link definitions, and of its footnote
+   * definitions with a `^` in front.
+   */
   readonly labels: readonly string[];
   /** Line endings in its text. */
   readonly lineEndings: number;
@@ -312,8 +315,10 @@ function scan(root: Root): { labels: string[]; nodes: number } {
     if (node.type === "definition" || node.type === "footnoteDefinition") {
       // The identifier, not the label: the label is decoded (escapes and
       // character references resolved), while references match on the raw
-      // text, which is what `bracketKeys` sees too.
-      labels.push(labelKey(node.identifier));
+      // text, which is what `bracketKeys` sees too. Footnote labels are a
+      // namespace of their own, keyed as their calls are written (`[^x]`).
+      const key = labelKey(node.identifier);
+      labels.push(node.type === "footnoteDefinition" ? `^${key}` : key);
     }
     if ("children" in node) for (const child of node.children) stack.push(child as Nodes);
   }
@@ -546,6 +551,7 @@ function usesForeignLabel(src: string, parts: readonly Part[]): boolean {
     if (own.size === all.size) continue;
     const keys = bracketKeys(src.slice(part.start, part.end));
     for (const label of all) {
+      // A link label is also checked as a footnote call: conservative.
       if (!own.has(label) && (keys.has(label) || keys.has(`^${label}`))) return true;
     }
   }
@@ -554,10 +560,10 @@ function usesForeignLabel(src: string, parts: readonly Part[]): boolean {
 
 /**
  * A line that looks like a link or footnote definition, behind block quote
- * markers or a list item marker: its label, without a footnote's `^`.
+ * markers or a list item marker: a footnote's `^`, if any, and its label.
  */
 const DEFINITION_LINE =
-  /^[ \t>]*(?:(?:[-+*]|\d{1,9}[.)])[ \t]+)?\[\^?((?:[^\\[\]\r\n]|\\.){1,999})\]:/gm;
+  /^[ \t>]*(?:(?:[-+*]|\d{1,9}[.)])[ \t]+)?\[(\^?)((?:[^\\[\]\r\n]|\\.){1,999})\]:/gm;
 
 /**
  * Does the text already show that some chunk uses a label another chunk
@@ -574,7 +580,8 @@ function showsForeignLabel(src: string, starts: readonly number[]): boolean {
   let chunk = 0;
   for (let m = DEFINITION_LINE.exec(src); m !== null; m = DEFINITION_LINE.exec(src)) {
     while (m.index >= (starts[chunk + 1] as number)) chunk += 1;
-    const key = labelKey(m[1] as string);
+    // Keyed as in `scan`: footnote labels with a `^` in front.
+    const key = `${m[1] as string}${labelKey(m[2] as string)}`;
     const chunks = definedIn.get(key) ?? new Set<number>();
     chunks.add(chunk);
     definedIn.set(key, chunks);
