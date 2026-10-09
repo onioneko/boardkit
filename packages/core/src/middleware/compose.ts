@@ -1,4 +1,6 @@
 import type { MergedTree } from "../link/merge.js";
+import type { Diagnostic } from "../model/diagnostic.js";
+import type { ParsedDoc } from "../model/doc.js";
 import type { BlockId, DocId } from "../model/ids.js";
 import type { SourceValue } from "../ports/ports.js";
 import type { PatchDeltaFn, WriteMode, WriteResult, Writer } from "../write/pipeline.js";
@@ -45,6 +47,39 @@ export type WriteProposal =
   | { readonly content: string }
   | Record<string, never>;
 
+/**
+ * What {@link WriteCtx.parse} returns: the parse of the source, or the
+ * rejection the commit pipeline gives a write of that source when it cannot be
+ * parsed. The rejection has the shape of a rejected {@link WriteResult}, so a
+ * middleware can pass it on with
+ * `throw new WriteRejection(r.rejection.reason, r.rejection.diagnostics)`.
+ */
+export type WriteParseResult =
+  | {
+      /** True when the source was parsed. */
+      readonly ok: true;
+      /**
+       * The parse. It may be the engine's cached parse, shared with every
+       * reader: its block attrs are frozen, and it must not be modified.
+       */
+      readonly parsed: ParsedDoc;
+    }
+  | {
+      /** False when the source was not parsed. */
+      readonly ok: false;
+      /** Why the source was not parsed. */
+      readonly rejection: {
+        /**
+         * `too-large` (over `maxDocumentBytes`) and `too-complex` (over a
+         * complexity limit) are found before any parse; `validation` means the
+         * parser threw (`E_PARSE_FAILED`).
+         */
+        readonly reason: "too-large" | "too-complex" | "validation";
+        /** The diagnostics explaining it. */
+        readonly diagnostics: readonly Diagnostic[];
+      };
+    };
+
 /** Per-write middleware context: mutable proposal before `next()`, result after. */
 export interface WriteCtx {
   /** The document being written. */
@@ -66,6 +101,25 @@ export interface WriteCtx {
   proposed: WriteProposal;
   /** Populated by the pipeline after `next()`. */
   result?: WriteResult;
+  /**
+   * Parse a source the way the commit pipeline does, for a middleware that
+   * needs the proposed text's structure (its blocks, sections or refs).
+   *
+   * The size limit and the complexity limits are checked first, and a source
+   * over one is not parsed. In an engine the parse goes through the engine's
+   * content-keyed parse cache, and the pipeline reuses a parse of the exact
+   * text it validates: a middleware that parses `proposed.fullText` (or a
+   * create's `proposed.content`) costs the write no second parse. A source
+   * that is already cached is returned without parsing or checking it again.
+   * Amending the proposal after parsing it leaves the amended text to be
+   * parsed by the pipeline.
+   *
+   * It never throws for the source's content: a source that cannot be parsed
+   * returns the rejection a write of it would get.
+   * @param src The source to parse, usually the proposed text.
+   * @returns The parse, or why the source was not parsed.
+   */
+  readonly parse: (src: string) => WriteParseResult;
 }
 
 /**

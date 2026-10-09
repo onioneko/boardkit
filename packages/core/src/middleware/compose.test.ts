@@ -69,6 +69,9 @@ describe("compose", () => {
         affordance: "transition",
         params: { to: "approved" },
       },
+      parse: () => {
+        throw new Error("not parsed in this test");
+      },
     };
     const middleware: WriteMiddleware = async (c, next) => {
       const proposed = c.proposed as { affordance?: string; params?: unknown };
