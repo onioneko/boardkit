@@ -994,8 +994,9 @@ export function createEngine(opts: EngineOptions): Engine {
   // source in total, because a parse can retain tens of times its source. The
   // most recently used parses also keep their mdast tree, for projectors that
   // read it instead of parsing again (`mdastOf`), within a separate budget of
-  // PARSE_CACHE_MAX_TREE_SOURCE_BYTES (4 MiB of source, about 10 to 14 times
-  // that in memory); past it the least recently used trees are released. Each
+  // PARSE_CACHE_MAX_TREE_NODES (200,000 mdast nodes, about 65 to 75 MiB at
+  // about 330 to 370 bytes per node); past it the least recently used trees
+  // are released. Each
   // engine instance owns its own in-memory state, with no cross-process
   // coordination; content-hash keying is what
   // makes a stale entry unreachable (different content → different key), so

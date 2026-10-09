@@ -95,6 +95,23 @@ describe("mdastOf", () => {
     expect(mdastOf(doc, src)).toBe(tree);
   });
 
+  it("hands out the tree deeply frozen, so no reader can change it for the others", () => {
+    const src = "## Head *x* {#h}\n\n- a [l](/u)\n";
+    const tree = mdastOf(parseDoc(src), src);
+    const unfrozen: string[] = [];
+    const visit = (value: unknown, path: string): void => {
+      if (typeof value !== "object" || value === null) return;
+      if (!Object.isFrozen(value)) unfrozen.push(path);
+      for (const [key, child] of Object.entries(value)) visit(child, `${path}.${key}`);
+    };
+    visit(tree, "root");
+    expect(unfrozen).toEqual([]);
+    const heading = tree?.children[0] as unknown as { children: unknown[] };
+    expect(() => {
+      heading.children.pop();
+    }).toThrow(TypeError);
+  });
+
   it("returns nothing for a source the parse was not made from", () => {
     const doc = parseDoc("# A\n");
     expect(mdastOf(doc, "# B\n")).toBeUndefined();

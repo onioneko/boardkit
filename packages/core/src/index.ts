@@ -99,6 +99,7 @@ export { DEFAULT_COMPLEXITY_LIMITS } from "./parse/complexity.js";
 // Fence→block recognition config (EngineOptions.parseOptions / PipelineDeps.parseOptions)
 export type { ParseOptions } from "./parse/options.js";
 // The mdast a parse was built from, for projectors that render markdown structure
+export type { DeepReadonly } from "./parse/pipeline.js";
 export { mdastOf } from "./parse/pipeline.js";
 // A heading's `{#anchor}` split, the rule the parser reads section ids with
 export { splitHeadingAnchor } from "./parse/sections.js";
