@@ -70,6 +70,22 @@ A patch is a **shallow merge** into the block's attributes: top-level keys are m
 array values are replaced wholesale. Every byte outside the block's YAML body is preserved,
 including comments, blank lines, and key order inside it.
 
+A patch changes only its target block: the new YAML body always stays between the block's own
+fences. A string that holds a run of three or more backticks or tildes is written on one line
+(double-quoted if it spans lines), so no line of it can close the fence.
+
+A patch that cannot keep that guarantee is refused. The write is rejected with reason `patch`
+and one of these diagnostics, and the document is left unchanged:
+
+| Code | When |
+|---|---|
+| `E_PATCH_SPAN` | The block cannot be located between its own fences: it has no source span, it is inside a list item or block quote, its closing fence is missing, or a tab falls within the fence's indent in its body. |
+| `E_PATCH_YAML` | The block's current body is not valid YAML. |
+| `E_PATCH_FENCE` | The new body would contain a line that closes the block's fence. |
+
+The same refusals apply when a full-text write must truncate a block's bounded history: there
+the write is rejected with reason `validation`.
+
 ## Live values: `sources` and the `values` record
 
 Prose declares its live values inline with `{{source:…}}`. A block declares them with

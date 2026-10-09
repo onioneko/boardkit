@@ -26,7 +26,7 @@ export function extractBlocks(
   const blocks: Block[] = [];
   const diagnostics: Diagnostic[] = [];
 
-  visit(root, "code", (node: Code) => {
+  visit(root, "code", (node: Code, _index, parent) => {
     const lang = node.lang;
     if (lang === null || lang === undefined || !blockTypes.has(lang)) return;
 
@@ -67,6 +67,7 @@ export function extractBlocks(
       ...(startOffset !== undefined && endOffset !== undefined
         ? { span: { start: startOffset, end: endOffset } }
         : {}),
+      ...(parent?.type === "root" ? {} : { contained: true as const }),
     });
   });
 
