@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { BlockType } from "../blocks/types.js";
+import { type WriteMiddleware, WriteRejection } from "../middleware/compose.js";
+import type { ParsedDoc } from "../model/doc.js";
 import { asDocId, type DocId } from "../model/ids.js";
 import type { ParseOptions } from "../parse/options.js";
 import { createMemStorage } from "../ports/mem.js";
@@ -353,5 +355,195 @@ describe("a shared, frozen parse never leaks out of the cache (#3)", () => {
       { writer },
     );
     expect(r.ok).toBe(true);
+  });
+});
+
+/**
+ * #41: a write middleware that needs the proposed text's structure parses it
+ * through `ctx.parse`, which goes through the engine's parse cache, and the
+ * pipeline then reuses that parse instead of making its own.
+ */
+describe("write middleware shares the write's parse (#41)", () => {
+  /** The proposed text of a full-text write or a create, if the write has one. */
+  const proposedText = (proposed: object): string | undefined =>
+    "fullText" in proposed
+      ? (proposed.fullText as string)
+      : "content" in proposed
+        ? (proposed.content as string)
+        : undefined;
+
+  /** A middleware that parses every proposed text through `ctx.parse`. */
+  function inspecting(times = 1): { middleware: WriteMiddleware; seen: ParsedDoc[] } {
+    const seen: ParsedDoc[] = [];
+    const middleware: WriteMiddleware = async (ctx, next) => {
+      const text = proposedText(ctx.proposed);
+      if (text !== undefined) {
+        for (let i = 0; i < times; i += 1) {
+          const r = ctx.parse(text);
+          if (!r.ok) throw new WriteRejection(r.rejection.reason, r.rejection.diagnostics);
+          seen.push(r.parsed);
+        }
+      }
+      await next();
+    };
+    return { middleware, seen };
+  }
+
+  it("a full-text write parses and scans its new text exactly once", async () => {
+    const m = inspecting();
+    const r = await realistic({ middleware: { write: [m.middleware] } });
+    m.seen.length = 0;
+    const w = await r.engine.write("leaf1", { writer, fullText: leaf(1, "prose edit") });
+    expect(w.ok).toBe(true);
+    expect(m.seen).toHaveLength(1);
+    expect(r.snapshot()).toEqual({
+      parses: 1,
+      scans: 1,
+      reads: 17,
+      readsByDoc: rebuildPlus({ leaf1: 1 }),
+    });
+    // The parse the middleware saw is the one the write seeded.
+    r.reset();
+    expect((await r.engine.projection("board1", "text", {})).output).toContain("prose edit");
+    expect({ parses: counts.parses, scans: counts.scans }).toEqual({ parses: 0, scans: 0 });
+  });
+
+  it("a create parses and scans its content exactly once", async () => {
+    const m = inspecting();
+    const r = await realistic({ middleware: { write: [m.middleware] } });
+    const w = await r.engine.createDoc("fresh", { writer, content: "# Fresh\n\nx\n" });
+    expect(w.ok).toBe(true);
+    expect({ parses: counts.parses, scans: counts.scans }).toEqual({ parses: 1, scans: 1 });
+  });
+
+  it("parsing the same text again, or in a second middleware, costs nothing more", async () => {
+    const a = inspecting(2);
+    const b = inspecting();
+    const r = await realistic({ middleware: { write: [a.middleware, b.middleware] } });
+    a.seen.length = 0;
+    b.seen.length = 0;
+    const w = await r.engine.write("leaf1", { writer, fullText: leaf(1, "prose edit") });
+    expect(w.ok).toBe(true);
+    expect({ parses: counts.parses, scans: counts.scans }).toEqual({ parses: 1, scans: 1 });
+    const first = a.seen[0];
+    expect([...a.seen, ...b.seen].every((p) => p === first)).toBe(true);
+  });
+
+  it("a middleware that amends the text after parsing it leaves the new text to the pipeline", async () => {
+    const amend: WriteMiddleware = async (ctx, next) => {
+      const text = proposedText(ctx.proposed);
+      if (ctx.mode === "full" && text !== undefined) {
+        expect(ctx.parse(text).ok).toBe(true);
+        ctx.proposed = { fullText: text.replace("draft", "final") };
+      }
+      await next();
+    };
+    const r = await realistic({ middleware: { write: [amend] } });
+    const w = await r.engine.write("leaf1", { writer, fullText: leaf(1, "draft") });
+    expect(w.ok).toBe(true);
+    // One parse for what the middleware read, one for what the write stored.
+    expect(counts.parses).toBe(2);
+    expect(await r.storage.read(asDocId("leaf1"))).toBe(leaf(1, "final"));
+  });
+
+  it("a write whose bounded history is truncated still truncates from the shared parse", async () => {
+    const logType: BlockType = {
+      type: "log",
+      schema: {
+        type: "object",
+        required: ["id", "entries"],
+        properties: { id: { type: "string" }, entries: { type: "array" } },
+      },
+      history: { attr: "entries", max: 2 },
+    };
+    const m = inspecting();
+    const storage = createMemStorage();
+    const engine = createEngine({
+      storage,
+      clock,
+      blocks: [logType],
+      middleware: { write: [m.middleware] },
+    });
+    const doc = (entries: string) => `# L\n\n\`\`\`log\nid: l\nentries: [${entries}]\n\`\`\`\n`;
+    await engine.createDoc("l", { writer, content: doc("a") });
+    counts.parses = 0;
+    const w = await engine.write("l", { writer, fullText: doc("a, b, c") });
+    expect(w.ok).toBe(true);
+    // The shared parse of the proposed text, then the parse of the truncated text.
+    expect(counts.parses).toBe(2);
+    expect((await engine.getBlock("l", "l"))?.attrs.entries).toEqual(["b", "c"]);
+  });
+
+  it("checks the size limit before parsing, and rejects as the pipeline would", async () => {
+    const big = `# Big\n\n${"x".repeat(200)}\n`;
+    const results = [];
+    for (const write of [[inspecting().middleware], []]) {
+      const engine = createEngine({
+        storage: createMemStorage(),
+        clock,
+        maxDocumentBytes: 100,
+        middleware: { write },
+      });
+      counts.parses = 0;
+      counts.scans = 0;
+      results.push(await engine.createDoc("big", { writer, content: big }));
+      expect({ parses: counts.parses, scans: counts.scans }).toEqual({ parses: 0, scans: 0 });
+    }
+    expect(results[0]).toEqual(results[1]);
+    expect(results[0]?.ok === false && results[0].rejection.reason).toBe("too-large");
+  });
+
+  it("checks the complexity limits before parsing, and rejects as the pipeline would", async () => {
+    const deep = `# Deep\n\n${"[".repeat(10)}x${"]".repeat(10)}\n`;
+    const results = [];
+    for (const write of [[inspecting().middleware], []]) {
+      const engine = createEngine({
+        storage: createMemStorage(),
+        clock,
+        complexityLimits: { maxBracketDepth: 4 },
+        middleware: { write },
+      });
+      counts.parses = 0;
+      results.push(await engine.createDoc("deep", { writer, content: deep }));
+      expect(counts.parses).toBe(0);
+    }
+    expect(results[0]).toEqual(results[1]);
+    expect(results[0]?.ok === false && results[0].rejection.reason).toBe("too-complex");
+  });
+
+  it("leaves the results, the stored text and the events unchanged", async () => {
+    const logType: BlockType = {
+      type: "log",
+      schema: {
+        type: "object",
+        required: ["id", "entries"],
+        properties: { id: { type: "string" }, entries: { type: "array" } },
+      },
+      history: { attr: "entries", max: 2 },
+    };
+    const doc = (entries: string, note: string) =>
+      `# L\n\n${note}\n\n\`\`\`log\nid: l\nentries: [${entries}]\n\`\`\`\n`;
+    const run = async (write: WriteMiddleware[]) => {
+      const storage = createMemStorage();
+      const engine = createEngine({
+        storage,
+        clock,
+        blocks: [logType, checklistType],
+        commitIdPrefix: "same",
+        middleware: { write },
+      });
+      const results = [
+        await engine.createDoc("l", { writer, content: doc("a", "one") }),
+        await engine.write("l", { writer, fullText: doc("a, b", "two") }),
+        await engine.write("l", { writer, fullText: doc("a, b, c, d", "three") }),
+        await engine.write("l", { writer, fullText: doc("x", "four").replace("id: l", "") }),
+        await engine.patch("l", "l", { writer, attrs: { entries: ["p", "q", "r"] } }),
+      ];
+      return { results, stored: await storage.read(asDocId("l")), events: storage.getEvents() };
+    };
+    const plain = await run([]);
+    const shared = await run([inspecting().middleware]);
+    expect(shared).toEqual(plain);
+    expect(plain.results.map((r) => r.ok)).toEqual([true, true, true, false, true]);
   });
 });

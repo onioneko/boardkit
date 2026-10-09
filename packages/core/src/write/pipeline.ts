@@ -8,6 +8,7 @@ import {
   compose,
   type WriteCtx,
   type WriteMiddleware,
+  type WriteParseResult,
   WriteRejection,
 } from "../middleware/compose.js";
 import type { Diagnostic } from "../model/diagnostic.js";
@@ -180,6 +181,30 @@ export interface PipelineDeps {
    */
   readonly cachedParse?: (docId: DocId, src: string) => ParsedDoc | undefined;
   /**
+   * A content-keyed parse cache shared with the write middleware. The engine
+   * passes its own. `WriteCtx.parse` parses through it, and a full-text write
+   * or a create reuses a parse it holds of the exact text it validates, so a
+   * middleware that parsed the proposed text costs the write no second parse.
+   * It must parse with `parseOptions`, and a parse it holds is used without
+   * the size and complexity checks, so it must only hold parses of content
+   * that passed them. Absent, `WriteCtx.parse` parses without caching.
+   */
+  readonly parseCache?: {
+    /**
+     * Parse `src`, or return the cached parse of identical content.
+     * @param src The source.
+     * @returns The parse and the content hash it is cached under.
+     * @throws Whatever the parse threw.
+     */
+    parse(src: string): { readonly doc: ParsedDoc; readonly hash: string };
+    /**
+     * The cached parse of `src`, without parsing on a miss.
+     * @param src The source.
+     * @returns The cached parse and its hash, or `undefined` when none is cached.
+     */
+    peek(src: string): { readonly doc: ParsedDoc; readonly hash: string } | undefined;
+  };
+  /**
    * Called once per commit, right after the bytes land and before any event
    * is appended, with what the commit did. The engine seeds its parse cache
    * from it and invalidates its include index. It must not throw.
@@ -260,10 +285,50 @@ export function parseLimitRejection(
   src: string,
   action: "write" | "read",
 ): WriteResult | undefined {
-  const tooLarge = sizeRejection(deps, docId, src, action);
-  if (tooLarge !== undefined) return tooLarge;
+  const over = overParseLimit(deps, docId, src, action);
+  return over === undefined ? undefined : rejection(over.reason, over.diagnostics);
+}
+
+/** The reason and diagnostic when `src` is over the size limit or a complexity limit. */
+function overParseLimit(
+  deps: Pick<PipelineDeps, "maxDocumentBytes" | "complexityLimits">,
+  docId: DocId,
+  src: string,
+  action: "write" | "read",
+):
+  | { readonly reason: "too-large" | "too-complex"; readonly diagnostics: readonly Diagnostic[] }
+  | undefined {
+  const max = deps.maxDocumentBytes ?? DEFAULT_MAX_DOCUMENT_BYTES;
+  const tooLarge = documentSizeDiagnostic(docId, src, max, action);
+  if (tooLarge !== undefined) return { reason: "too-large", diagnostics: [tooLarge] };
   const d = complexityDiagnostic(docId, src, deps.complexityLimits, action);
-  return d === undefined ? undefined : rejection("too-complex", [d]);
+  return d === undefined ? undefined : { reason: "too-complex", diagnostics: [d] };
+}
+
+/**
+ * The `WriteCtx.parse` of one write: the shared parse cache's parse when it
+ * holds one, otherwise the limits, then a parse (through the cache when there
+ * is one). Content failures are returned, never thrown.
+ */
+function writeParse(deps: PipelineDeps, docId: DocId): (src: string) => WriteParseResult {
+  return (src) => {
+    const cached = deps.parseCache?.peek(src);
+    if (cached !== undefined) return { ok: true, parsed: cached.doc };
+    const over = overParseLimit(deps, docId, src, "write");
+    if (over !== undefined) return { ok: false, rejection: over };
+    try {
+      const parsed =
+        deps.parseCache === undefined
+          ? parseDoc(src, deps.parseOptions)
+          : deps.parseCache.parse(src).doc;
+      return { ok: true, parsed };
+    } catch (err) {
+      return {
+        ok: false,
+        rejection: { reason: "validation", diagnostics: [parseFailedDiagnostic(docId, err)] },
+      };
+    }
+  };
 }
 
 /**
@@ -365,22 +430,59 @@ async function emit(
   return { records, appended: true };
 }
 
-/** Validate parsed content and apply bounded-history truncation, returning the final source. */
+/**
+ * VALIDATE for a write of whole text (a full-text write or a create): the size
+ * and complexity limits, then {@link validateAndTruncate}, then the limits
+ * again when truncation rewrote the text. A parse of the exact text in the
+ * shared parse cache (one a middleware made through `WriteCtx.parse`) is
+ * reused, and its limits are not checked again: the cache only holds content
+ * that passed them.
+ */
+function validateText(
+  deps: PipelineDeps,
+  docId: DocId,
+  text: string,
+):
+  | { readonly ok: true; readonly src: string; readonly parsed?: ParsedDoc }
+  | { readonly ok: false; readonly result: WriteResult } {
+  const shared = deps.parseCache?.peek(text)?.doc;
+  if (shared === undefined) {
+    const overLimit = parseLimitRejection(deps, docId, text, "write");
+    if (overLimit !== undefined) return { ok: false, result: overLimit };
+  }
+  const validated = validateAndTruncate(deps, docId, text, shared);
+  if (!validated.ok) return { ok: false, result: rejection("validation", validated.diagnostics) };
+  if (validated.src !== text) {
+    const grown = parseLimitRejection(deps, docId, validated.src, "write");
+    if (grown !== undefined) return { ok: false, result: grown };
+  }
+  return validated;
+}
+
+/**
+ * Validate parsed content and apply bounded-history truncation, returning the
+ * final source. `shared` is an existing parse of `src` to use instead of
+ * parsing it; its block attrs may be frozen, so nothing here modifies them.
+ */
 function validateAndTruncate(
   deps: PipelineDeps,
   docId: DocId,
   src: string,
+  shared?: ParsedDoc,
 ):
   | { ok: true; src: string; parsed?: ParsedDoc }
   | { ok: false; diagnostics: readonly Diagnostic[] } {
-  const attempt = tryParseDoc(src, deps.parseOptions, docId);
-  if (!attempt.ok) return { ok: false, diagnostics: [attempt.diagnostic] };
-  const parsed = attempt.parsed;
+  let parsed = shared;
+  if (parsed === undefined) {
+    const attempt = tryParseDoc(src, deps.parseOptions, docId);
+    if (!attempt.ok) return { ok: false, diagnostics: [attempt.diagnostic] };
+    parsed = attempt.parsed;
+  }
   const diagnostics: Diagnostic[] = [...parsed.diagnostics];
   for (const node of blocksOf(parsed)) {
     const type = deps.blockTypes.get(node.type);
-    // The hooks get a copy: this parse is seeded into the engine's cache,
-    // and a hook that normalizes attrs in place must not change it.
+    // The hooks get a copy: this parse is seeded into the engine's cache (or
+    // came from it), and a hook that normalizes attrs in place must not change it.
     if (type !== undefined) {
       for (const d of validateBlock(type, structuredClone(node.attrs))) diagnostics.push(d);
     }
@@ -527,7 +629,13 @@ export async function writeDoc(
       diagnostic("E_WRITE_DOMAIN", `writer not allowed: ${docId}`),
     ]);
   }
-  const ctx: WriteCtx = { docId, writer, mode: "full", proposed: { fullText } };
+  const ctx: WriteCtx = {
+    docId,
+    writer,
+    mode: "full",
+    proposed: { fullText },
+    parse: writeParse(deps, docId),
+  };
   return withLock(deps, docId, () =>
     withWriteMiddleware(deps, ctx, async () => {
       const text = (ctx.proposed as { fullText: string }).fullText;
@@ -540,14 +648,8 @@ export async function writeDoc(
       if (decideFullText(docVersion(current), guards) === "reject") {
         return rejection("stale-version", [], docVersion(current));
       }
-      const overLimit = parseLimitRejection(deps, docId, text, "write");
-      if (overLimit !== undefined) return overLimit;
-      const validated = validateAndTruncate(deps, docId, text);
-      if (!validated.ok) return rejection("validation", validated.diagnostics);
-      if (validated.src !== text) {
-        const grown = parseLimitRejection(deps, docId, validated.src, "write");
-        if (grown !== undefined) return grown;
-      }
+      const validated = validateText(deps, docId, text);
+      if (!validated.ok) return validated.result;
       const after = parseWritten(deps, docId, validated);
       const before = parseBefore(deps, docId, current);
       await deps.storage.writeAtomic(docId, validated.src);
@@ -615,6 +717,7 @@ export async function patchDoc(
     docId,
     writer,
     mode: "patch",
+    parse: writeParse(deps, docId),
     proposed: {
       blockId,
       delta,
@@ -774,7 +877,13 @@ export async function createDoc(
       diagnostic("E_WRITE_DOMAIN", `writer not allowed: ${docId}`),
     ]);
   }
-  const ctx: WriteCtx = { docId, writer, mode: "create", proposed: { content } };
+  const ctx: WriteCtx = {
+    docId,
+    writer,
+    mode: "create",
+    proposed: { content },
+    parse: writeParse(deps, docId),
+  };
   return withLock(deps, docId, () =>
     withWriteMiddleware(deps, ctx, async () => {
       const proposed = ctx.proposed as { content: string };
@@ -784,14 +893,8 @@ export async function createDoc(
           diagnostic("E_DOC_EXISTS", `document already exists: ${docId}`),
         ]);
       }
-      const overLimit = parseLimitRejection(deps, docId, proposed.content, "write");
-      if (overLimit !== undefined) return overLimit;
-      const validated = validateAndTruncate(deps, docId, proposed.content);
-      if (!validated.ok) return rejection("validation", validated.diagnostics);
-      if (validated.src !== proposed.content) {
-        const grown = parseLimitRejection(deps, docId, validated.src, "write");
-        if (grown !== undefined) return grown;
-      }
+      const validated = validateText(deps, docId, proposed.content);
+      if (!validated.ok) return validated.result;
       const after = parseWritten(deps, docId, validated);
       await deps.storage.writeAtomic(docId, validated.src);
       const version = docVersion(validated.src);
@@ -858,7 +961,13 @@ export async function importDoc(
       diagnostic("E_WRITE_DOMAIN", `writer not allowed: ${docId}`),
     ]);
   }
-  const ctx: WriteCtx = { docId, writer, mode: "import", proposed: { content } };
+  const ctx: WriteCtx = {
+    docId,
+    writer,
+    mode: "import",
+    proposed: { content },
+    parse: writeParse(deps, docId),
+  };
   return withLock(deps, docId, () =>
     withWriteMiddleware(deps, ctx, async () => {
       const proposed = ctx.proposed as { content?: unknown };
@@ -917,7 +1026,13 @@ export async function removeDoc(
       diagnostic("E_WRITE_DOMAIN", `writer not allowed: ${docId}`),
     ]);
   }
-  const ctx: WriteCtx = { docId, writer, mode: "remove", proposed: {} };
+  const ctx: WriteCtx = {
+    docId,
+    writer,
+    mode: "remove",
+    proposed: {},
+    parse: writeParse(deps, docId),
+  };
   return withLock(deps, docId, () =>
     withWriteMiddleware(deps, ctx, async () => {
       const existing = await deps.storage.read(docId);

@@ -977,6 +977,12 @@ export function createEngine(opts: EngineOptions): Engine {
     maxDocumentBytes,
     complexityLimits,
     cachedParse,
+    // `WriteCtx.parse` and the write's own VALIDATE share the parse cache
+    // (declared below, read only once a write runs).
+    parseCache: {
+      parse: (src) => parseCache.parse(src),
+      peek: (src) => parseCache.peek(src),
+    },
     onCommit,
   };
 
