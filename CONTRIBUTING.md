@@ -206,3 +206,5 @@ The one-time setup behind this (npm trusted publishers and repository settings) 
 ## Reporting a security issue
 
 Do not report a security vulnerability in a public issue. Report it privately through GitHub private vulnerability reporting, as described in [SECURITY.md](SECURITY.md), which also lists the supported versions and what to include.
+
+The workflow opens the version pull request with a token from the `onioneko-boardkit-release` GitHub App rather than `GITHUB_TOKEN`. Pull requests created with `GITHUB_TOKEN` do not trigger workflows, so CI would not run on them and the ruleset on `main` would block the merge. The App needs only contents and pull-requests write access on this repository, plus two repository settings: the variable `RELEASE_APP_CLIENT_ID` and the secret `RELEASE_APP_PRIVATE_KEY`.
