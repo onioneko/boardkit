@@ -422,6 +422,7 @@ export function createChunkCache(limits: ChunkCacheOptions): ChunkCache {
     const starts = chunkStarts(src, frontmatterEnd(src, bom), limits.fenceScan ?? true);
     if (starts.length === 1) return whole("single", 1);
     starts.push(src.length);
+    if (showsForeignLabel(src, starts)) return whole("definitions", starts.length - 1);
 
     /** The chunk `[start, end)`: cached, or parsed (and cached unless it is the whole source). */
     const chunkAt = (start: number, end: number): Chunk => {
@@ -540,6 +541,40 @@ function usesForeignLabel(src: string, parts: readonly Part[]): boolean {
     const keys = bracketKeys(src.slice(part.start, part.end));
     for (const label of all) {
       if (!own.has(label) && (keys.has(label) || keys.has(`^${label}`))) return true;
+    }
+  }
+  return false;
+}
+
+/** A line that looks like a link or footnote definition: its label, without a footnote's `^`. */
+const DEFINITION_LINE = /^[ \t>]*\[\^?((?:[^\\[\]\r\n]|\\.){1,999})\]:/gm;
+
+/**
+ * Does the text already show that some chunk uses a label another chunk
+ * defines? Checked before any chunk is parsed, so that a document whose
+ * definitions sit in a footer section is parsed whole once, not in chunks
+ * and then whole. Only a shortcut: a definition the line pattern misses is
+ * caught after parsing by {@link usesForeignLabel}.
+ * @param src The source.
+ * @param starts The chunk starts, then the source's length.
+ */
+function showsForeignLabel(src: string, starts: readonly number[]): boolean {
+  // Label key → the chunks that define it.
+  const definedIn = new Map<string, Set<number>>();
+  let chunk = 0;
+  for (let m = DEFINITION_LINE.exec(src); m !== null; m = DEFINITION_LINE.exec(src)) {
+    while (m.index >= (starts[chunk + 1] as number)) chunk += 1;
+    const key = labelKey(m[1] as string);
+    const chunks = definedIn.get(key) ?? new Set<number>();
+    chunks.add(chunk);
+    definedIn.set(key, chunks);
+  }
+  DEFINITION_LINE.lastIndex = 0;
+  if (definedIn.size === 0) return false;
+  for (let k = 0; k < starts.length - 1; k += 1) {
+    const used = bracketKeys(src.slice(starts[k], starts[k + 1]));
+    for (const [key, chunks] of definedIn) {
+      if (!chunks.has(k) && (used.has(key) || used.has(`^${key}`))) return true;
     }
   }
   return false;

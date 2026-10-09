@@ -206,6 +206,23 @@ describe("chunked parse", () => {
       });
     });
 
+    it("sees a footer of definitions in the text: one whole parse, no chunk parses", () => {
+      const cache = newCache();
+      const doc = "# A\n\nSee [spec].\n\n# B\n\nText.\n\n# Links\n\n[spec]: /s\n";
+      parsed.length = 0;
+      expect(same(cache, doc)).toMatchObject({ whole: "definitions", parsed: 1 });
+      expect(parsed).toEqual([doc]);
+      expect(cache.size).toBe(0);
+    });
+
+    it("catches after parsing a definition the text scan misses (in a list item)", () => {
+      const cache = newCache();
+      expect(same(cache, "# A\n\nSee [spec].\n\n# Links\n\n- [spec]: /s\n")).toMatchObject({
+        whole: "definitions",
+        parsed: 3,
+      });
+    });
+
     it("a label broken over block quote lines still counts as used", () => {
       const cache = newCache();
       expect(
