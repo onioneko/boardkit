@@ -95,7 +95,9 @@ tree changed the output in these cases; everything else renders byte for byte as
   so the budget counts nodes, not source. The engine's parse cache keeps the trees of its most
   recently used parses up to 200,000 nodes in all (`PARSE_CACHE_MAX_TREE_NODES`), about 65 to
   75 MiB, on top of the parses themselves (16 MiB of source). Past that budget the least recently
-  used trees are released; their parses stay cached.
+  used trees are released; their parses stay cached. The parsed sections the cache keeps to
+  re-parse edits incrementally have a budget of their own (see
+  [Edits re-parse only their sections](#edits-re-parse-only-their-sections)).
 - **Released trees.** A document whose tree was released (or a `ParsedDoc` not made by the parser)
   is parsed again from its source, once per projection however many of its sections are
   included. The output is the same either way.
@@ -294,6 +296,40 @@ parsed is not scanned against the complexity limits again. The cache of parses i
 attrs throws, and that block falls back to its verbatim source (`E_BLOCK_HOOK_ERROR`). A
 projector that modifies `input.doc` throws, and the projection falls back to the raw source
 (`E_PROJECTOR_ERROR`, see [Projector exceptions](#projector-exceptions)).
+
+### Edits re-parse only their sections
+
+A changed document is new content, but the engine does not parse all of it again. It cuts the
+source into sections before each heading line (`#` to `######` in the first column), parses each
+section on its own and keeps the parsed sections. The next version of the document re-parses only
+the sections whose text changed, so the cost of an edit follows the size of the sections it
+touches, not the size of the document. On a 256 KiB board, a one-paragraph edit re-parses one
+section: about 5 ms for the markdown and about 17 ms for the whole parse, down from about 0.38 s.
+Writes, patches, intents, external edits and reads all benefit.
+
+The result is exactly what one parse of the whole document gives, positions included. A test in
+the repository compares the two on recorded documents, the CommonMark examples and thousands of
+random edits. Some markdown makes the engine parse more than one section at a time, or the whole
+document:
+
+- **Constructs that span headings.** A fenced code block, an HTML block or a table that a heading
+  line would continue (an unclosed fence, for example) is parsed together with the sections after
+  it, up to where it ends, taking 1, 2, 4… more sections at a time. The worst case, an HTML block
+  that never closes typed near the top, costs about two to three parses of the whole document. A
+  heading line inside a fence (a `# comment` in a shell script) does not start a section.
+- **Frontmatter.** Nothing inside the leading `---` block is cut. A `---` on the first line that
+  never closes changes how the whole document parses, so such a document is parsed whole.
+- **Definitions in another section.** A link reference definition (`[label]: url`) or a footnote
+  definition (`[^label]: …`) applies to the whole document. When a section may refer to a label
+  that another section defines (its text holds that label in brackets), the document is parsed
+  whole. A board that keeps its link definitions in a footer section gets no speedup from its
+  sections; definitions kept in the section that uses them cost nothing.
+- **No headings.** A document without heading lines is one section.
+
+The engine's parse cache keeps the parsed sections beside the parses: up to 8,192 sections,
+100,000 mdast nodes (about 33 to 37 MiB) and 4 MiB of source, least recently used first out. A
+document whose sections were dropped is parsed in full, with the same result. The first parse of
+a document costs about what one whole parse costs.
 
 ## The projection input
 
