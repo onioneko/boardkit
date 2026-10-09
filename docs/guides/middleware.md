@@ -37,6 +37,50 @@ const rejectRobots: WriteMiddleware = async (ctx, next) => {
 There is no hook between LOCK and COMMIT: middleware wraps the whole pipeline, not a stage
 inside it.
 
+## Reading the proposed text's structure
+
+A middleware that needs to know what a full-text write or a create would store (which blocks
+it has, of which types, under which headings) parses the proposed text with `ctx.parse(src)`
+rather than calling a parser itself:
+
+```ts
+import { WriteRejection, type WriteMiddleware } from "@onioneko/boardkit-core";
+
+// Refuse a full-text write that would leave a document with more than 50 blocks.
+const capBlocks: WriteMiddleware = async (ctx, next) => {
+  if (ctx.mode === "full" && "fullText" in ctx.proposed) {
+    const r = ctx.parse(ctx.proposed.fullText);
+    if (!r.ok) throw new WriteRejection(r.rejection.reason, r.rejection.diagnostics);
+    const blocks = r.parsed.nodes.filter((n) => "blockId" in n).length;
+    if (blocks > 50) {
+      throw new WriteRejection("too many blocks", [
+        { code: "E_TOO_MANY_BLOCKS", message: `${blocks} blocks; at most 50 are allowed` },
+      ]);
+    }
+  }
+  await next();
+};
+```
+
+`ctx.parse` returns a `WriteParseResult`:
+
+- `{ ok: true, parsed }`: the `ParsedDoc` the commit pipeline makes of that text. It may be the
+  engine's cached parse, shared with every reader: its block attrs are frozen, and it must not
+  be modified.
+- `{ ok: false, rejection: { reason, diagnostics } }`: the rejection a write of that text would
+  get. The size limit (`too-large`) and the complexity limits (`too-complex`) are checked before
+  anything is parsed; a parser that throws gives `validation` with `E_PARSE_FAILED`. Throw it
+  as a `WriteRejection`, as above, or call `next()` and let the pipeline reject the write the
+  same way.
+
+The parse goes through the engine's content-keyed parse cache, and the pipeline reuses a parse
+of the exact text it validates. A middleware that parses `proposed.fullText` (or a create's
+`proposed.content`) therefore costs the write no second parse, and parsing the same text again,
+in the same or another middleware, costs nothing more. If a middleware amends the proposal
+after parsing it, the pipeline parses the amended text itself. `ctx.parse` works in every write
+mode, but only a full-text write and a create reuse its parse: a patch computes its new text
+inside the pipeline.
+
 ## What a patch proposal looks like
 
 A patch's `delta` comes in two forms. `engine.patch` hands middleware a **concrete record** —
