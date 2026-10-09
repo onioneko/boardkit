@@ -147,9 +147,12 @@ describe("projection from the parsed tree: parsing", () => {
 });
 
 describe("projection from the parsed tree: the shared tree", () => {
-  it("leaves the parse's tree unchanged", async () => {
+  it("leaves the parse's tree unchanged, holes or not", async () => {
+    // The second heading holds no hole: only the heading copy keeps its
+    // anchor removal off the shared tree, which is frozen, so a write to it
+    // fails the projection.
     const src =
-      "## Head {{source:cash}} {#h}\n\n- a {{source:cash}}\n\n```status\nid: d\nvalue: x\n```\n\nwww.x.io/{{source:cash}}\n";
+      "## Head {{source:cash}} {#h}\n\n## Plain *x* {#p}\n\n- a {{source:cash}}\n\n```status\nid: d\nvalue: x\n```\n\nwww.x.io/{{source:cash}}\n";
     const doc = parseDoc(src, { blockTypes: new Set(["status"]) });
     const tree = mdastOf(doc, src);
     const before = structuredClone(tree);
@@ -158,7 +161,9 @@ describe("projection from the parsed tree: the shared tree", () => {
       blockTypes: new Map([["status", statusType]]),
     });
     expect(html).toContain('<h2 id="user-content-h">Head ¥100</h2>');
+    expect(html).toContain('<h2 id="user-content-p">Plain <em>x</em></h2>');
     expect(html).toContain('<a href="http://www.x.io/¥100">');
+    expect(Object.isFrozen(tree)).toBe(true);
     expect(mdastOf(doc, src)).toBe(tree);
     expect(tree).toEqual(before);
   });

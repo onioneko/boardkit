@@ -5,13 +5,22 @@
  * (`test/corpus/`) and every Markdown file in the repository.
  *
  * The two agree byte for byte except where the token rewrite changed what
- * the markdown says, which the new projection reads as the source does:
+ * the markdown says. The new projection reads these as the source does, and
+ * each has its own test below:
  *
- * 1. a typed block directly followed (or preceded) by a text line: the token
+ * a. a typed block directly followed (or preceded) by a text line: the token
  *    made the block part of that paragraph;
- * 2. inline syntax right next to a `{{source:…}}` ref: the token's letters
- *    made a `*` or `_` flanking (emphasis) where the source's `{{`/`}}` do not,
- *    and likewise made an email autolink of a ref followed by `@domain`.
+ * b. emphasis next to a `{{source:…}}` ref: the token's letters made a `*`
+ *    or `_` flanking where the source's `{{`/`}}` do not;
+ * c. an email autolink next to a ref: the token's letters made
+ *    `{{source:p}}@example.com` an email address;
+ * d. a heading anchor next to a ref: (b) inside a heading changed which
+ *    `{#anchor}` the projection found;
+ * e. a ref inside a reference-link label: the token kept `[{{source:a}}]`
+ *    from matching its definition, so it was not a link.
+ *
+ * In the corpus only (a) occurs; (b) to (e) are told apart by the check that
+ * without values (no tokens) both projections agree.
  */
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -121,12 +130,17 @@ function separateTypedBlocks(src: string): string | undefined {
   return changed ? out.join("\n") : undefined;
 }
 
-/** Whether a `{{source:…}}` ref has inline syntax right next to it (emphasis, an email's `@`). */
-function refBesideDelimiter(src: string): boolean {
-  return /[*_~]\{\{\s*source:|\}\}[*_~@]/.test(src);
+/**
+ * Whether a `{{source:…}}` ref has inline syntax right next to it (emphasis,
+ * an email's `@`, a link label's brackets) or sits inside a link label.
+ */
+function refBesideSyntax(src: string): boolean {
+  return (
+    /[*_~[]\{\{\s*source:|\}\}[*_~@\]]/.test(src) || /\[[^\]\n]*\{\{\s*source:[^\]\n]*\]/.test(src)
+  );
 }
 
-type Outcome = "identical" | "typedBlockLine" | "refDelimiter" | "unexplained";
+type Outcome = "identical" | "typedBlockLine" | "refBesideSyntax" | "unexplained";
 
 /** How the two projections of `src` compare, or `undefined` when it does not parse. */
 async function compare(src: string): Promise<{ outcome: Outcome; detail: string } | undefined> {
@@ -141,10 +155,10 @@ async function compare(src: string): Promise<{ outcome: Outcome; detail: string 
     return { outcome: "typedBlockLine", detail: "" };
   }
   // 2. Without values there are no tokens, and both read the source.
-  if (refBesideDelimiter(src)) {
+  if (refBesideSyntax(src)) {
     const raw = await both(src, false);
     if (raw !== undefined && raw.next === raw.before)
-      return { outcome: "refDelimiter", detail: "" };
+      return { outcome: "refBesideSyntax", detail: "" };
   }
   const detail = `${JSON.stringify(src.slice(0, 200))}\n  new: ${r.next.slice(0, 300)}\n  old: ${r.before.slice(0, 300)}`;
   return { outcome: "unexplained", detail };
@@ -157,7 +171,7 @@ async function tally(sources: readonly string[]): Promise<{
   const counts: Record<Outcome, number> = {
     identical: 0,
     typedBlockLine: 0,
-    refDelimiter: 0,
+    refBesideSyntax: 0,
     unexplained: 0,
   };
   const unexplained: string[] = [];
@@ -171,7 +185,7 @@ async function tally(sources: readonly string[]): Promise<{
 }
 
 describe("projection from the parsed tree, against the token re-parse", () => {
-  it("matches on the recorded corpus except for the two documented artefacts", async () => {
+  it("matches on the recorded corpus except for the documented behaviour changes", async () => {
     const { counts, unexplained } = await tally(corpus);
     expect(unexplained.slice(0, 5)).toEqual([]);
     // The corpus is a fixed file, so the split is exact: a change here means
@@ -179,7 +193,7 @@ describe("projection from the parsed tree, against the token re-parse", () => {
     expect(counts).toMatchInlineSnapshot(`
       {
         "identical": 7697,
-        "refDelimiter": 0,
+        "refBesideSyntax": 0,
         "typedBlockLine": 2047,
         "unexplained": 0,
       }
@@ -203,20 +217,20 @@ async function projectEdge(
 }
 
 describe("projection from the parsed tree: behaviour changes", () => {
-  it("1. keeps a typed block out of the text line right after it", async () => {
+  it("(a) keeps a typed block out of the text line right after it", async () => {
     const { next, before } = await projectEdge("```box\nid: b\n```\nprobe\n");
     expect(next).toBe('<p><div class="box">{"id":"b"}</div></p>\n<p>probe</p>');
     // The token re-parse glued the line into the block's paragraph.
     expect(before).toBe('<p><div class="box">{"id":"b"}</div>\nprobe</p>');
   });
 
-  it("1. keeps a typed block out of the text line right before it", async () => {
+  it("(a) keeps a typed block out of the text line right before it", async () => {
     const { next, before } = await projectEdge("text\n```box\nid: b\n```\n");
     expect(next).toBe('<p>text</p>\n<p><div class="box">{"id":"b"}</div></p>');
     expect(before).toBe('<p>text\n<div class="box">{"id":"b"}</div></p>');
   });
 
-  it("2. reads emphasis next to a ref by the source's flanking rules", async () => {
+  it("(b) reads emphasis next to a ref by the source's flanking rules", async () => {
     // `*` before `{` and after `}` is not left- or right-flanking around
     // punctuation the way it is around the token's letters: no emphasis.
     const inner = await projectEdge("foo*{{source:a}}*bar\n");
@@ -227,7 +241,7 @@ describe("projection from the parsed tree: behaviour changes", () => {
     expect(strong.before).toBe("<p><strong>V&#x3C;a></strong>bar</p>");
   });
 
-  it("2. finds a heading's anchor exactly where the parser does, next to a ref", async () => {
+  it("(d) finds a heading's anchor exactly where the parser does, next to a ref", async () => {
     // In the source `}}_a {#b_` is emphasis, so the heading has no anchor (its
     // section id is the slug); the token's letters made the `_` intraword.
     const src = "## {{source:p}}_a {#b_}\n";
@@ -239,10 +253,21 @@ describe("projection from the parsed tree: behaviour changes", () => {
     expect(before).toBe('<h2 id="user-content-b_">V&#x3C;p>_a</h2>');
   });
 
-  it("2. makes no email autolink of a ref followed by `@domain`", async () => {
+  it("(c) makes no email autolink of a ref followed by `@domain`", async () => {
     const { next, before } = await projectEdge("{{source:p}}@example.com\n");
     expect(next).toBe("<p>V&#x3C;p>@example.com</p>");
     expect(before).toBe('<p><a href="mailto:V<p>@example.com">V&#x3C;p>@example.com</a></p>');
+  });
+
+  it("(e) links a ref inside a reference-link label, as its definition says", async () => {
+    // The label matches its definition in the source; the token did not. The
+    // URL is the definition's, as written: no value reaches the href.
+    const full = await projectEdge("[{{source:a}}]\n\n[{{source:a}}]: https://x.io/{{source:a}}\n");
+    expect(full.next).toBe('<p><a href="https://x.io/%7B%7Bsource:a%7D%7D">V&#x3C;a></a></p>');
+    expect(full.before).toBe("<p>[V&#x3C;a>]</p>");
+    const collapsed = await projectEdge("[x {{source:a}}][]\n\n[x {{source:a}}]: /u\n");
+    expect(collapsed.next).toBe('<p><a href="/u">x V&#x3C;a></a></p>');
+    expect(collapsed.before).toBe("<p>[x V&#x3C;a>][]</p>");
   });
 
   it.each([

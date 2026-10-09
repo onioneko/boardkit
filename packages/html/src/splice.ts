@@ -1,4 +1,4 @@
-import type { SourceSpan } from "@onioneko/boardkit-core";
+import type { DeepReadonly, SourceSpan } from "@onioneko/boardkit-core";
 import type {
   FootnoteReference,
   Link,
@@ -100,8 +100,9 @@ function alignCuts(raw: string, value: string, cuts: readonly number[]): number[
 
 /**
  * The value offsets `[from, to)` of a reference whose source spans
- * `[start, end)` of the text node's source: aligned, then checked to read
- * `{{…}}`; when the check fails, the next `{{…}}` in the value from `cursor`.
+ * `[start, end)` of the text node's source, by aligning the two; `undefined`
+ * when the aligned span does not read `{{…}}`, so the reference stays as its
+ * source text rather than a value landing on other text.
  */
 function locate(
   raw: string,
@@ -112,12 +113,8 @@ function locate(
 ): readonly [number, number] | undefined {
   if (raw === value) return [start, end];
   const [from, to] = alignCuts(raw, value, [start, end]) as [number, number];
-  if (from >= cursor && value.startsWith("{{", from) && value.slice(0, to).endsWith("}}")) {
-    return [from, to];
-  }
-  const open = value.indexOf("{{", cursor);
-  const close = open === -1 ? -1 : value.indexOf("}}", open + 2);
-  return close === -1 ? undefined : [open, close + 2];
+  const reads = from >= cursor && value.startsWith("{{", from) && value.slice(0, to).endsWith("}}");
+  return reads ? [from, to] : undefined;
 }
 
 /** A text node with each edit's token in place of the reference it covers. */
@@ -256,7 +253,8 @@ function danglingFootnotes(tree: Root, src: string, inside: (offset: number) => 
 /**
  * The node's top-level mdast nodes, copied out of its document's `tree`, with
  * each edit applied at its source span.
- * @param tree The document's parsed tree (shared; never changed).
+ * @param frozen The document's parsed tree: shared and frozen, so every node
+ *   that changes is a copy.
  * @param src The source `tree` was parsed from.
  * @param ranges The node's ranges in `src`, disjoint: a top-level node is
  *   projected when it starts inside one.
@@ -264,11 +262,13 @@ function danglingFootnotes(tree: Root, src: string, inside: (offset: number) => 
  * @returns A new root holding the node's content.
  */
 export function spliceTokens(
-  tree: Root,
+  frozen: DeepReadonly<Root>,
   src: string,
   ranges: readonly SourceSpan[],
   tokens: readonly TokenEdit[],
 ): Root {
+  // Read through the mutable mdast types; nothing here writes to it.
+  const tree = frozen as unknown as Root;
   const inside = (offset: number): boolean =>
     ranges.some((r) => offset >= r.start && offset < r.end);
   const edits: Edit[] = [...tokens, ...danglingFootnotes(tree, src, inside)];

@@ -1,4 +1,5 @@
 import {
+  type DeepReadonly,
   diagnostic,
   type MergedInclude,
   mdastOf,
@@ -164,7 +165,7 @@ function placeholderNonce(src: string, ranges: readonly SourceSpan[]): string {
  */
 const parsedByCache = new WeakMap<
   ProjectionWalkCache,
-  WeakMap<ParsedDoc, { readonly src: string; readonly tree: MdRoot }>
+  WeakMap<ParsedDoc, { readonly src: string; readonly tree: DeepReadonly<MdRoot> }>
 >();
 
 /**
@@ -173,7 +174,7 @@ const parsedByCache = new WeakMap<
  * Either way the tree is the document's parse, so the output does not depend
  * on whether a tree was kept.
  */
-function documentTree(walk: ProjectionWalkOptions): MdRoot {
+function documentTree(walk: ProjectionWalkOptions): DeepReadonly<MdRoot> {
   const { doc, src } = walk.node;
   const kept = mdastOf(doc, src);
   if (kept !== undefined) return kept;
@@ -184,7 +185,7 @@ function documentTree(walk: ProjectionWalkOptions): MdRoot {
   }
   const memo = byDoc?.get(doc);
   if (memo !== undefined && memo.src === src) return memo.tree;
-  const tree = toMdast.parse(src) as MdRoot;
+  const tree = toMdast.parse(src) as DeepReadonly<MdRoot>;
   byDoc?.set(doc, { src, tree });
   return tree;
 }

@@ -144,7 +144,8 @@ const tree = sanitizePanelHast(await projectHast(walkOf(input.merged.root), hand
   the engine has already parsed parses nothing. When the parse kept no tree,
   the document's source is parsed once per projection walk cache. The tokens
   carry a random value chosen per call and absent from the source, so text an
-  author writes is never mistaken for one.
+  author writes is never mistaken for one. The [projections guide](https://github.com/onioneko/boardkit/blob/main/docs/guides/projections.md#how-the-html-projection-reads-the-markdown)
+  lists where this output differs from 0.3's, which parsed the tokens.
 - **Holes.** `source` (a resolved value), `block` (the block with its hook
   already dispatched for `walk.projectorId`) and `include` (the merged child
   node) reach `onHole`, once each, in document order; the handler may be
@@ -157,8 +158,8 @@ const tree = sanitizePanelHast(await projectHast(walkOf(input.merged.root), hand
 - **Attributes.** A reference in an autolink (`www.example.com/{{source:p}}`,
   `<https://example.com/{{source:p}}>`) is in its `href` too. There a hole
   becomes `onHoleInAttribute(hole)`, by default the value's text for `source`,
-  the raw reference for `unresolved`, and `""` for an include. A link written
-  with a destination (`[text](url)`) keeps its URL as written.
+  the raw reference for `unresolved`, and `""` for a block or include. A link
+  written with a destination (`[text](url)`) keeps its URL as written.
 - **Unsanitized.** `projectHast` returns the tree as built, hook output and
   all. Run `sanitizePanelHast` on it before anything renders it. Build
   include wrappers with `includeWrapper`: the sanitizer keeps provenance on
