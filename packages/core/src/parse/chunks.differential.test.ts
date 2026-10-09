@@ -56,19 +56,29 @@ function check(label: string, cache: ChunkCache, src: string): boolean {
   return true;
 }
 
+/**
+ * Let the event loop run: the long run's synchronous loops would otherwise
+ * keep the test worker from answering the runner (it times out and fails the
+ * run although every comparison passed).
+ */
+const yieldToRunner = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));
+
 /** Check `src` and `edits` random edits of it, each applied to the previous version. */
-function checkEdits(
+async function checkEdits(
   label: string,
   cache: ChunkCache,
   src: string,
   edits: number,
   r: () => number,
-): void {
+): Promise<void> {
   let current = src;
-  if (!check(label, cache, current)) return;
+  const checked = check(label, cache, current);
+  await yieldToRunner();
+  if (!checked) return;
   for (let v = 0; v < edits; v += 1) {
     current = mutate(current, r);
     check(`${label}.v${v}`, cache, current);
+    await yieldToRunner();
   }
 }
 
@@ -112,12 +122,12 @@ describe.each([
 
   it(
     "recorded parse inputs, each with random edits",
-    () => {
+    async () => {
       const cache = newCache();
       const r = rng(7);
       for (const [i, doc] of corpus.entries()) {
         // Inputs far over the default document size limit get one edit.
-        checkEdits(`corpus#${i}`, cache, doc, doc.length > 300_000 ? 1 : scale(3, 8), r);
+        await checkEdits(`corpus#${i}`, cache, doc, doc.length > 300_000 ? 1 : scale(3, 8), r);
       }
       expect(tally.compared).toBeGreaterThan(corpus.length);
     },
@@ -126,7 +136,7 @@ describe.each([
 
   it(
     "every CommonMark example, alone and stitched together with headings",
-    () => {
+    async () => {
       const cache = newCache();
       for (const [i, example] of examples.entries()) check(`spec#${i + 1}`, cache, example);
       const r = rng(11);
@@ -138,7 +148,7 @@ describe.each([
           const heading = r() < 0.5 ? `## part ${k}\n` : `\n# part ${k}\n\n`;
           doc += (k === 0 ? "" : heading) + example;
         }
-        checkEdits(`stitched#${g}`, cache, doc, 4, r);
+        await checkEdits(`stitched#${g}`, cache, doc, 4, r);
       }
     },
     TIMEOUT,
@@ -146,15 +156,15 @@ describe.each([
 
   it(
     "the CommonMark spec's own source (long, with long fences), with random edits",
-    () => {
-      checkEdits("spec.txt", newCache(), specText, scale(2, 40), rng(5));
+    async () => {
+      await checkEdits("spec.txt", newCache(), specText, scale(2, 40), rng(5));
     },
     TIMEOUT,
   );
 
   it(
     "generated boards with random dangerous edits, LF, CRLF and CR",
-    () => {
+    async () => {
       const r = rng(3);
       for (let seed = 1; seed <= scale(4, 24); seed += 1) {
         const eol = seed % 3 === 1 ? "\n" : seed % 3 === 2 ? "\r\n" : "\r";
@@ -162,7 +172,7 @@ describe.each([
           eol,
           ...(seed % 4 === 0 ? { footerDefinitions: 0.1 } : {}),
         });
-        checkEdits(`board${seed}`, newCache(), doc, scale(30, 200), r);
+        await checkEdits(`board${seed}`, newCache(), doc, scale(30, 200), r);
       }
     },
     TIMEOUT,
@@ -170,7 +180,7 @@ describe.each([
 
   it(
     "seeded random documents built from dangerous fragments",
-    () => {
+    async () => {
       const cache = newCache();
       const fragments = [
         ...DANGEROUS,
@@ -187,6 +197,12 @@ describe.each([
         "- [^2]: in a list\n",
         "> See [x\n> y] and [^2].\n",
         "[X  Y]: /xy\n",
+        "- [R&amp;D]: /rd\n",
+        "See [R&amp;D] and [a\\*b] and [x&#93;y].\n",
+        "1. [a\\*b]: /ab\n",
+        "> [x&#93;y]: /bracket\n",
+        "- [^R&amp;D]: footnote\n",
+        "Note[^R&amp;D].\n",
         "    indented code\n",
         "Setext\n---\n",
         "1. one\n2. two\n",
@@ -199,7 +215,7 @@ describe.each([
         const n = 3 + Math.floor(r() * 14);
         for (let k = 0; k < n; k += 1)
           doc += fragments[Math.floor(r() * fragments.length)] as string;
-        checkEdits(`random#${d}`, cache, doc, 3, r);
+        await checkEdits(`random#${d}`, cache, doc, 3, r);
       }
     },
     TIMEOUT,
@@ -207,9 +223,9 @@ describe.each([
 
   it(
     "a small cache evicting chunks gives the same trees",
-    () => {
+    async () => {
       const cache = createChunkCache({ maxEntries: 8, maxNodes: 300, maxSourceBytes: 2048 });
-      checkEdits(
+      await checkEdits(
         "evicting",
         cache,
         generateBoard(16 * 1024, 2, { eol: "\r\n" }),
