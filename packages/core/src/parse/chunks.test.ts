@@ -230,6 +230,14 @@ describe("chunked parse", () => {
       ).toMatchObject({ whole: "definitions" });
     });
 
+    it("a long label spread over many quoted lines still counts as used", () => {
+      const cache = newCache();
+      const words = Array.from({ length: 180 }, (_, i) => `w${i}`);
+      const quoted = words.join("\n> > > > ");
+      const doc = `# A\n\n> > > > [${quoted}]\n\n# Links\n\n- [${words.join(" ")}]: /s\n`;
+      expect(same(cache, doc).whole).toBe("definitions");
+    });
+
     it("chunks whose labels are all their own are kept apart", () => {
       const cache = newCache();
       const stats = same(cache, "# A\n\n[a]\n\n[a]: /a\n\n# B\n\n[b]\n\n[b]: /b\n");

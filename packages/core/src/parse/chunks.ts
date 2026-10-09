@@ -333,7 +333,10 @@ function bracketKeys(text: string): Set<string> {
     if (c === "\\") i += 1;
     else if (c === "[") open = i + 1;
     else if (c === "]" && open >= 0) {
-      if (i - open <= MAX_LABEL * 2) keys.add(labelKey(text.slice(open, i)));
+      // The raw run may be longer than a label (block quote markers and
+      // indentation on each line), its key never is.
+      const key = labelKey(text.slice(open, i));
+      if (key.length <= MAX_LABEL) keys.add(key);
       open = -1;
     }
   }
