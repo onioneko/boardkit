@@ -3,7 +3,6 @@ import equal from "fast-deep-equal";
 import type { AnyBlockType } from "../blocks/types.js";
 import { diffDocs } from "../diff/diff.js";
 import { synthesizeEvents } from "../diff/synthesize.js";
-import type { ParseCache } from "../engine/parse-cache.js";
 import { docVersion } from "../engine/version.js";
 import {
   compose,
@@ -190,7 +189,21 @@ export interface PipelineDeps {
    * the size and complexity checks, so it must only hold parses of content
    * that passed them. Absent, `WriteCtx.parse` parses without caching.
    */
-  readonly parseCache?: Pick<ParseCache, "parse" | "peek">;
+  readonly parseCache?: {
+    /**
+     * Parse `src`, or return the cached parse of identical content.
+     * @param src The source.
+     * @returns The parse and the content hash it is cached under.
+     * @throws Whatever the parse threw.
+     */
+    parse(src: string): { readonly doc: ParsedDoc; readonly hash: string };
+    /**
+     * The cached parse of `src`, without parsing on a miss.
+     * @param src The source.
+     * @returns The cached parse and its hash, or `undefined` when none is cached.
+     */
+    peek(src: string): { readonly doc: ParsedDoc; readonly hash: string } | undefined;
+  };
   /**
    * Called once per commit, right after the bytes land and before any event
    * is appended, with what the commit did. The engine seeds its parse cache
