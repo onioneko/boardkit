@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import type { WriteMiddleware, WriteParseResult } from "../middleware/compose.js";
 import { asDocId } from "../model/ids.js";
 import type { ParseOptions } from "../parse/options.js";
 import { createMemStorage } from "../ports/mem.js";
@@ -74,5 +75,24 @@ describe("a document whose parse throws within the default limits", () => {
     const fixed = await engine.write("bad", { writer, fullText: "# Fixed\n" });
     expect(fixed.ok).toBe(true);
     expect((await engine.projection("bad", "text", {})).ok).toBe(true);
+  });
+});
+
+describe("WriteCtx.parse of a source whose parse throws", () => {
+  it("returns the E_PARSE_FAILED rejection the write itself would get, without throwing", async () => {
+    const seen: WriteParseResult[] = [];
+    const inspect: WriteMiddleware = async (ctx, next) => {
+      if ("content" in ctx.proposed) seen.push(ctx.parse(ctx.proposed.content));
+      await next();
+    };
+    const engine = createEngine({ storage: createMemStorage(), middleware: { write: [inspect] } });
+    const r = await engine.createDoc("bad", { writer, content: bad });
+    expect(seen).toHaveLength(1);
+    expect(seen[0]?.ok).toBe(false);
+    if (seen[0]?.ok === false && !r.ok) {
+      expect(seen[0].rejection.reason).toBe("validation");
+      expect(seen[0].rejection.diagnostics.map((d) => d.code)).toEqual(["E_PARSE_FAILED"]);
+      expect(seen[0].rejection).toEqual(r.rejection);
+    }
   });
 });

@@ -68,6 +68,7 @@ export type {
   ProjectionMiddleware,
   WriteCtx,
   WriteMiddleware,
+  WriteParseResult,
   WriteProposal,
 } from "./middleware/compose.js";
 // ---------------------------------------------------------------------------

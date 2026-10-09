@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { BlockType } from "../blocks/types.js";
 import { docVersion } from "../engine/version.js";
-import { type WriteMiddleware, WriteRejection } from "../middleware/compose.js";
+import {
+  type WriteMiddleware,
+  type WriteParseResult,
+  WriteRejection,
+} from "../middleware/compose.js";
 import type { Diagnostic } from "../model/diagnostic.js";
 import type { Block } from "../model/doc.js";
 import { asBlockId, asDocId } from "../model/ids.js";
@@ -980,5 +984,63 @@ describe("importDoc (restore bytes verbatim)", () => {
     };
     successOf(await importDoc({ ...d, storage }, asDocId("bad"), writer, invalid));
     expect(held).toBe(0);
+  });
+});
+
+describe("WriteCtx.parse without an engine parse cache", () => {
+  /** A middleware that parses every proposed `content` through `ctx.parse`. */
+  function inspecting(seen: WriteParseResult[]): WriteMiddleware {
+    return async (ctx, next) => {
+      if ("content" in ctx.proposed) seen.push(ctx.parse(ctx.proposed.content));
+      await next();
+    };
+  }
+
+  it("parses the proposed text as the pipeline does", async () => {
+    const seen: WriteParseResult[] = [];
+    const d = { ...deps(), middleware: [inspecting(seen)] };
+    successOf(await createDoc(d, asDocId("fin"), writer, checklistSrc));
+    expect(seen).toHaveLength(1);
+    const first = seen[0];
+    if (first?.ok !== true) throw new Error("expected a parse");
+    expect(first.parsed).toEqual(parseDoc(checklistSrc, d.parseOptions));
+  });
+
+  it("returns the size and complexity rejections the write gets, without parsing", async () => {
+    const seen: WriteParseResult[] = [];
+    const d = {
+      ...deps(),
+      maxDocumentBytes: 32,
+      complexityLimits: { maxBracketDepth: 2 },
+      middleware: [inspecting(seen)],
+    };
+    const tooLarge = rejectionOf(
+      await createDoc(d, asDocId("a"), writer, `# A\n\n${"x".repeat(64)}\n`),
+    );
+    const tooComplex = rejectionOf(await createDoc(d, asDocId("b"), writer, "[[[x]]]\n"));
+    expect(seen).toEqual([
+      { ok: false, rejection: tooLarge },
+      { ok: false, rejection: tooComplex },
+    ]);
+    expect([tooLarge.reason, tooComplex.reason]).toEqual(["too-large", "too-complex"]);
+  });
+
+  it("is there in every write mode", async () => {
+    const modes: string[] = [];
+    const d = {
+      ...deps(),
+      middleware: [
+        (async (ctx, next) => {
+          if (ctx.parse("# Probe\n").ok) modes.push(ctx.mode);
+          await next();
+        }) satisfies WriteMiddleware,
+      ],
+    };
+    successOf(await createDoc(d, asDocId("fin"), writer, checklistSrc));
+    successOf(await writeDoc(d, asDocId("fin"), writer, checklistSrc));
+    successOf(await patchDoc(d, asDocId("fin"), asBlockId("c"), { title: "t" }, writer));
+    successOf(await removeDoc(d, asDocId("fin"), writer));
+    successOf(await importDoc(d, asDocId("fin"), writer, checklistSrc));
+    expect(modes).toEqual(["create", "full", "patch", "remove", "import"]);
   });
 });
