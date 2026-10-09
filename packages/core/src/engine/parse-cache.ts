@@ -42,7 +42,11 @@ export const PARSE_CACHE_MAX_TREE_NODES = 200_000;
  */
 export const PARSE_CACHE_MAX_CHUNK_NODES = 100_000;
 
-/** Most source the parse cache keeps in parsed chunks at once: 4 MiB, in UTF-16 code units. */
+/**
+ * Most source the parse cache keeps in parsed chunks at once: 4 MiB, counted in
+ * UTF-16 code units (each chunk keeps its own copy of its text, so up to about
+ * 8 MiB of memory).
+ */
 export const PARSE_CACHE_MAX_CHUNK_SOURCE_BYTES = 4 * 1024 * 1024;
 
 /** Most parsed chunks the parse cache keeps at once. */

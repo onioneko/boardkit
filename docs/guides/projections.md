@@ -327,9 +327,10 @@ document:
 - **No headings.** A document without heading lines is one section.
 
 The engine's parse cache keeps the parsed sections beside the parses: up to 8,192 sections,
-100,000 mdast nodes (about 33 to 37 MiB) and 4 MiB of source, least recently used first out. A
-document whose sections were dropped is parsed in full, with the same result. The first parse of
-a document costs about what one whole parse costs.
+100,000 mdast nodes (about 33 to 37 MiB) and 4 MiB of source (counted in UTF-16 code units, so up
+to about 8 MiB in memory), least recently used first out. A document whose sections were dropped
+is parsed in full, with the same result. The first parse of a document costs about what one whole
+parse costs.
 
 ## The projection input
 
