@@ -1,5 +1,53 @@
 # @onioneko/boardkit-core
 
+## 0.4.0
+
+### Minor Changes
+
+- c95c1c7: An edit re-parses only the sections it touches (#43). The engine cuts a document into sections before each column-1 heading line, parses each on its own and keeps the parsed sections, so the next version re-parses only the sections whose text changed. On a 256 KiB board a one-paragraph edit costs about 17 ms of parsing instead of about 0.38 s, for writes, patches, intents, external edits and reads alike.
+
+  No output changes: the parse is exactly the one a whole parse gives, mdast positions included, and a differential test in the repository checks it on recorded documents, the CommonMark examples and random edits (`pnpm --filter @onioneko/boardkit-core test:differential` runs the long version). A construct that spans headings (an unclosed fence or HTML block, a table a heading would continue) is parsed together with the sections after it; a document that opens frontmatter and never closes it, or whose sections may use a link or footnote definition from another section, is parsed whole.
+
+  - **Memory:** the engine's parse cache keeps the parsed sections beside its parses, up to 8,192 sections, 100,000 mdast nodes (about 33 to 37 MiB) and 4 MiB of source (4 Mi UTF-16 code units, up to about 8 MiB in memory). Sections past that budget are dropped, least recently used first.
+  - **Cost:** the first parse of a document costs about what a whole parse costs. The worst edit, an HTML block that never closes typed near the top of a document, costs about two to three whole parses.
+  - No API changes.
+
+- 04bd935: A block patch now changes only its target block; it can no longer close the block early and add or hide blocks after it.
+
+  - String values that hold a fence run (three or more backticks or tildes) are written on one line, and line folding cannot put a fence at the start of a line. A patch whose new body could still close the block is refused with `E_PATCH_FENCE`.
+  - A block inside a list item or block quote is refused with `E_PATCH_SPAN` instead of being corrupted. `Block` gains an optional `contained: true` flag that marks such blocks. A full-text write that must truncate the bounded history of such a block is now rejected with reason `validation`.
+  - A fence indented 1–3 spaces keeps its body's indentation, so nested values stay nested.
+  - A block body that is not valid YAML is refused with `E_PATCH_YAML` instead of throwing.
+  - Tilde fences and fences longer than three backticks are located correctly.
+
+  In every refusal the document is left unchanged. The codes are listed in the blocks guide under "Patch semantics".
+
+- 5d0558b: The html projection reads the document's parsed mdast tree instead of parsing token-rewritten markdown again (#42). Projecting a version the engine has already parsed costs no markdown parse: on a 256 KiB document, `projectHtml` drops from about 420 ms to about 45 ms of CPU.
+
+  Behaviour changes (html). The old projection replaced each hole with an alphanumeric placeholder and parsed the result, so the placeholder could change what the markdown around it meant. The output now follows the source's own markdown in these cases; everything else renders byte for byte as before:
+
+  - **A typed block directly next to a text line** (no blank line between them) is no longer glued into that line's paragraph. ` ```box … ``` ` followed by `probe` rendered `<p><div class="box">…</div>\nprobe</p>` and now renders `<p><div class="box">…</div></p>\n<p>probe</p>`; the same holds for a text line right before the fence. Add a blank line between them if you relied on the old layout.
+  - **Emphasis next to a `{{source:…}}` reference** follows the source's flanking rules, where `{{` and `}}` are punctuation: `foo*{{source:a}}*bar` and `**{{source:a}}**bar` no longer render emphasis.
+  - **An email autolink next to a reference** is no longer formed: `{{source:p}}@example.com` is text, not a `mailto:` link, because `{` cannot start an email address.
+  - **A heading anchor next to a reference** is the one the parser finds: in `## {{source:p}}_a {#b_}` the `_`s are emphasis, so the heading has no anchor (and no `id`), matching its section id, where the old projection found `b_`.
+  - **A reference inside a reference-link label** now links: `[{{source:a}}]` with the definition `[{{source:a}}]: url` (or the collapsed `[x {{source:a}}][]`) renders a link to the definition's URL as written, showing the value, where it rendered as bracketed text.
+
+  Sanitizing, hole handlers, block hook output and include provenance are unchanged.
+
+  - **New, core:** `mdastOf(doc, src)` returns the mdast tree a parse was built from, or `undefined` when it is not kept. The tree is shared, so it is deeply frozen and typed with the new `DeepReadonly` type: copy any node you change.
+  - **New, core:** the projection walk passes each hole's `SourceSpan` to `onSource`, `onUnresolvedSource`, `onBlock` and `onInclude` as a new optional last argument.
+  - **New, core (internal):** `releaseMdast(doc)` and `mdastNodeCount(doc)` from `@onioneko/boardkit-core/internal`.
+  - **Memory, core:** a parse's tree takes about 330 to 370 bytes per mdast node, which is about 3 to 6 times the source for plain prose and over 100 times it for lists and tables. The internal `parseDoc` keeps it for as long as the returned `ParsedDoc` is reachable. The engine's parse cache keeps the trees of its most recently used parses up to 200,000 nodes in all (about 65 to 75 MiB), on top of its 16 MiB source budget for the parses; past that, the least recently used trees are released and their documents are parsed again when projected (once per projection), with the same output.
+  - **html:** `projectHast`'s `walk.unescapeRefs` has no effect any more: the prose comes from the parsed tree, where the parser already consumed a `\{{`'s backslash.
+  - **html:** the peer range on `@onioneko/boardkit-core` is now `>=0.4.0 <1.0.0`, for `mdastOf`.
+
+- 3fb7b35: Write middleware can parse the proposed text through the engine's parse cache, and the write reuses that parse (#41).
+
+  - **New:** `WriteCtx.parse(src)` returns a new `WriteParseResult`: `{ ok: true, parsed }` with the `ParsedDoc` the commit pipeline makes of `src`, or `{ ok: false, rejection: { reason, diagnostics } }` with the rejection a write of `src` would get. The size and complexity limits are checked before anything is parsed (`too-large`, `too-complex`), and a parser that throws gives `validation` with `E_PARSE_FAILED`; it never throws for the source's content. In an engine it parses through the content-keyed parse cache, so a parse it returns may be shared and its block attrs are frozen.
+  - **Parse once:** a full-text write or a create reuses a cached parse of the exact text it validates, so a middleware that parses `proposed.fullText` or `proposed.content` with `ctx.parse` costs the write no second parse, and the write does not scan that text against the complexity limits again. Results, stored text and events are unchanged.
+  - **New (additive) field:** `PipelineDeps.parseCache`, through which the engine shares its parse cache with the pipeline.
+  - **Breaking (type), `WriteCtx`:** `parse` is a required field. The pipeline always provides it; code that builds a `WriteCtx` by hand (a middleware unit test, for example) must add a `parse` function.
+
 ## 0.3.0
 
 ### Minor Changes

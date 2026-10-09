@@ -1,6 +1,6 @@
 {
   "name": "@onioneko/boardkit-core",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "The BoardKit engine: a Markdown document engine with typed blocks, dual-mode writes, projections, events and include aggregation.",
   "keywords": [
     "markdown",
