@@ -267,6 +267,9 @@ importers:
       '@types/write-file-atomic':
         specifier: 'catalog:'
         version: 4.0.3
+      commonmark-spec:
+        specifier: ^0.31.2
+        version: 0.31.2
       typescript:
         specifier: 'catalog:'
         version: 5.9.3
@@ -1069,6 +1072,9 @@ packages:
 
   comma-separated-tokens@2.0.3:
     resolution: {integrity: sha512-Fu4hJdvzeylCfQPp9SGWidpzrMs7tTrlu6Vb8XGaRGck8QSNZJJp538Wrb60Lax4fPwR64ViY468OIUTbRlGZg==}
+
+  commonmark-spec@0.31.2:
+    resolution: {integrity: sha512-vXKxmclzJPymhOJYD26G0oBjVmIcKC8p5m2DvHIq1A1btr1m0r0dT/PzRA5/nwxUbCAPedMNPEoiQE+zvuOcOw==}
 
   cross-spawn@7.0.6:
     resolution: {integrity: sha512-uV2QOWP2nWzsy2aMp8aRibhi9dlzF5Hgh5SHaB9OiTGEyDTiJJyx0uy51QXdyWbtAHNua4XJzUKca3OzKUd3vA==}
@@ -2589,6 +2595,8 @@ snapshots:
       readdirp: 4.1.2
 
   comma-separated-tokens@2.0.3: {}
+
+  commonmark-spec@0.31.2: {}
 
   cross-spawn@7.0.6:
     dependencies:

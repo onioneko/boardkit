@@ -1,5 +1,6 @@
 import { LRUCache } from "lru-cache";
 import type { ParsedDoc } from "../model/doc.js";
+import { type ChunkCache, createChunkCache } from "../parse/chunks.js";
 import { mdastNodeCount, releaseMdast } from "../parse/pipeline.js";
 import { docVersion } from "./version.js";
 
@@ -27,6 +28,25 @@ export const PARSE_CACHE_MAX_SOURCE_BYTES = 16 * 1024 * 1024;
  * the whole budget is not kept.
  */
 export const PARSE_CACHE_MAX_TREE_NODES = 200_000;
+
+/**
+ * Most mdast nodes the parse cache keeps in parsed chunks at once: 100,000
+ * (about 33 to 37 MiB at about 330 to 370 bytes per node). A parse through
+ * the engine's parse cache re-parses only the sections of a document that
+ * changed since a version whose chunks are still kept (see `parse/chunks.ts`):
+ * each section is cached as a separate tree, positions relative to itself,
+ * on top of the trees of whole parses. Past this budget, or
+ * {@link PARSE_CACHE_MAX_CHUNK_SOURCE_BYTES} or {@link PARSE_CACHE_MAX_CHUNKS},
+ * the least recently used chunks are dropped; a document whose chunks were
+ * dropped is parsed again in full, with the same result.
+ */
+export const PARSE_CACHE_MAX_CHUNK_NODES = 100_000;
+
+/** Most source the parse cache keeps in parsed chunks at once: 4 MiB, in UTF-16 code units. */
+export const PARSE_CACHE_MAX_CHUNK_SOURCE_BYTES = 4 * 1024 * 1024;
+
+/** Most parsed chunks the parse cache keeps at once. */
+export const PARSE_CACHE_MAX_CHUNKS = 8192;
 
 /**
  * Most failed parses the engine remembers at once. A parse that throws (deep
@@ -75,6 +95,12 @@ export interface ParseCache {
   readonly sourceBytes: number;
   /** Total mdast nodes of the cached parses that still keep their tree. */
   readonly treeNodes: number;
+  /**
+   * The parsed chunks (sections) of recent sources. The parse function gets
+   * them so that it can re-parse only what changed: the engine binds them to
+   * its parse options (`bindChunkCache`). Cleared with the cache.
+   */
+  readonly chunks: ChunkCache;
 }
 
 /** Freeze a value and everything reachable from it (plain YAML data: objects and arrays). */
@@ -97,9 +123,14 @@ function deepFreeze(value: unknown): void {
  * recently used parses whose trees fit the tree budget, counted in nodes. Past it, the least
  * recently used parse's tree is released (`releaseMdast`); the parse
  * stays cached. A parse that leaves the cache releases its tree too.
+ *
+ * It also holds a chunk cache ({@link ParseCache.chunks}) for the parse
+ * function to parse through, with its own bounds.
  * @param parse Parses one source (the engine passes `parseDoc` with its options).
  * @param opts Bounds; default to {@link PARSE_CACHE_MAX_ENTRIES},
- *   {@link PARSE_CACHE_MAX_SOURCE_BYTES} and {@link PARSE_CACHE_MAX_TREE_NODES}.
+ *   {@link PARSE_CACHE_MAX_SOURCE_BYTES}, {@link PARSE_CACHE_MAX_TREE_NODES},
+ *   {@link PARSE_CACHE_MAX_CHUNKS}, {@link PARSE_CACHE_MAX_CHUNK_NODES} and
+ *   {@link PARSE_CACHE_MAX_CHUNK_SOURCE_BYTES}.
  * @returns The cache.
  */
 export function createParseCache(
@@ -108,8 +139,16 @@ export function createParseCache(
     readonly maxEntries?: number;
     readonly maxSourceBytes?: number;
     readonly maxTreeNodes?: number;
+    readonly maxChunks?: number;
+    readonly maxChunkNodes?: number;
+    readonly maxChunkSourceBytes?: number;
   } = {},
 ): ParseCache {
+  const chunks = createChunkCache({
+    maxEntries: opts.maxChunks ?? PARSE_CACHE_MAX_CHUNKS,
+    maxNodes: opts.maxChunkNodes ?? PARSE_CACHE_MAX_CHUNK_NODES,
+    maxSourceBytes: opts.maxChunkSourceBytes ?? PARSE_CACHE_MAX_CHUNK_SOURCE_BYTES,
+  });
   // The parses that still keep their tree, by content hash. Evicting one
   // releases its tree; the parse itself stays in `cache`.
   const trees = new LRUCache<string, ParsedDoc>({
@@ -178,6 +217,7 @@ export function createParseCache(
     clear() {
       cache.clear();
       failures.clear();
+      chunks.clear();
     },
     get size() {
       return cache.size;
@@ -188,5 +228,6 @@ export function createParseCache(
     get treeNodes() {
       return trees.calculatedSize;
     },
+    chunks,
   };
 }

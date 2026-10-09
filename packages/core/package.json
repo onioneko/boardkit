@@ -53,6 +53,7 @@
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
+    "test:differential": "BOARDKIT_PARSE_DIFFERENTIAL=full vitest run src/parse/chunks.differential.test.ts",
     "test:watch": "vitest"
   },
   "dependencies": {
@@ -83,6 +84,7 @@
     "@types/unist": "catalog:",
     "@types/write-file-atomic": "catalog:",
     "@types/node": "catalog:",
-    "@types/proper-lockfile": "^4.1.4"
+    "@types/proper-lockfile": "^4.1.4",
+    "commonmark-spec": "^0.31.2"
   }
 }
