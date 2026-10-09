@@ -16,7 +16,7 @@
 </div></section>
 <div class="tsd-signature"><span class="tsd-signature-keyword">interface</span> <span class="tsd-kind-interface">ParsedDoc</span> <span class="tsd-signature-symbol">{</span><br/>    <a class="tsd-kind-property" href="#diagnostics">diagnostics</a><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-keyword">readonly</span> <a href="Consumer_API.Diagnostic.html" class="tsd-signature-type tsd-kind-interface">Diagnostic</a><span class="tsd-signature-symbol">[]</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#frontmatter">frontmatter</a><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">Record</span><span class="tsd-signature-symbol">&lt;</span><span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">,</span> <span class="tsd-signature-type">unknown</span><span class="tsd-signature-symbol">&gt;</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#frontmatterspan">frontmatterSpan</a><span class="tsd-signature-symbol">?:</span> <a href="Consumer_API.SourceSpan.html" class="tsd-signature-type tsd-kind-interface">SourceSpan</a><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#nodes">nodes</a><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-keyword">readonly</span> <a href="../types/Consumer_API.DocNode.html" class="tsd-signature-type tsd-kind-type-alias">DocNode</a><span class="tsd-signature-symbol">[]</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#refs">refs</a><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-keyword">readonly</span> <a href="../types/Consumer_API.InlineRef.html" class="tsd-signature-type tsd-kind-type-alias">InlineRef</a><span class="tsd-signature-symbol">[]</span><span class="tsd-signature-symbol">;</span><br/>    <a class="tsd-kind-property" href="#refspans">refSpans</a><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-keyword">readonly</span> <a href="Consumer_API.RefSpan.html" class="tsd-signature-type tsd-kind-interface">RefSpan</a><span class="tsd-signature-symbol">[]</span><span class="tsd-signature-symbol">;</span><br/><span class="tsd-signature-symbol">}</span></div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/model/doc.ts#L72">packages/core/src/model/doc.ts:72</a></li></ul></aside>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/model/doc.ts#L78">packages/core/src/model/doc.ts:78</a></li></ul></aside>
 <section class="tsd-panel-group tsd-index-group">
 <section class="tsd-panel tsd-index-panel">
 <details class="tsd-index-content tsd-accordion" open><summary class="tsd-accordion-summary tsd-index-summary"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><use href="../assets/icons.svg#icon-chevronDown"></use></svg>
@@ -40,14 +40,14 @@
 <div class="tsd-comment tsd-typography"><p>Parse-time problems (bad frontmatter/refs/blocks), reported rather than thrown.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/model/doc.ts#L87">packages/core/src/model/doc.ts:87</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/model/doc.ts#L93">packages/core/src/model/doc.ts:93</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="frontmatter"><code class="tsd-tag">Readonly</code><span>frontmatter</span><a href="#frontmatter" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">frontmatter</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-type">Record</span><span class="tsd-signature-symbol">&lt;</span><span class="tsd-signature-type">string</span><span class="tsd-signature-symbol">,</span> <span class="tsd-signature-type">unknown</span><span class="tsd-signature-symbol">&gt;</span></div>
 <div class="tsd-comment tsd-typography"><p>The document's YAML frontmatter, parsed to a mapping (empty when absent).</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/model/doc.ts#L74">packages/core/src/model/doc.ts:74</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/model/doc.ts#L80">packages/core/src/model/doc.ts:80</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="frontmatterspan"><code class="tsd-tag">Optional</code> <code class="tsd-tag">Readonly</code><span>frontmatter<wbr/>Span</span><a href="#frontmatterspan" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">frontmatterSpan</span><span class="tsd-signature-symbol">?:</span> <a href="Consumer_API.SourceSpan.html" class="tsd-signature-type tsd-kind-interface">SourceSpan</a></div>
@@ -55,28 +55,28 @@
 The text projector uses this to omit frontmatter by default.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/model/doc.ts#L79">packages/core/src/model/doc.ts:79</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/model/doc.ts#L85">packages/core/src/model/doc.ts:85</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="nodes"><code class="tsd-tag">Readonly</code><span>nodes</span><a href="#nodes" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">nodes</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-keyword">readonly</span> <a href="../types/Consumer_API.DocNode.html" class="tsd-signature-type tsd-kind-type-alias">DocNode</a><span class="tsd-signature-symbol">[]</span></div>
 <div class="tsd-comment tsd-typography"><p>Sections and typed blocks, in document order.</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/model/doc.ts#L81">packages/core/src/model/doc.ts:81</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/model/doc.ts#L87">packages/core/src/model/doc.ts:87</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="refs"><code class="tsd-tag">Readonly</code><span>refs</span><a href="#refs" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">refs</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-keyword">readonly</span> <a href="../types/Consumer_API.InlineRef.html" class="tsd-signature-type tsd-kind-type-alias">InlineRef</a><span class="tsd-signature-symbol">[]</span></div>
 <div class="tsd-comment tsd-typography"><p>All inline refs in the document, in document order (incl. those inside sections).</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/model/doc.ts#L83">packages/core/src/model/doc.ts:83</a></li></ul></aside></section>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/model/doc.ts#L89">packages/core/src/model/doc.ts:89</a></li></ul></aside></section>
 <section class="tsd-panel tsd-member">
 <h3 class="tsd-anchor-link" id="refspans"><code class="tsd-tag">Readonly</code><span>ref<wbr/>Spans</span><a href="#refspans" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="../assets/icons.svg#icon-anchor"></use></svg></a></h3>
 <div class="tsd-signature"><span class="tsd-kind-property">refSpans</span><span class="tsd-signature-symbol">:</span> <span class="tsd-signature-keyword">readonly</span> <a href="Consumer_API.RefSpan.html" class="tsd-signature-type tsd-kind-interface">RefSpan</a><span class="tsd-signature-symbol">[]</span></div>
 <div class="tsd-comment tsd-typography"><p>Raw source spans of every recognized reference (span-rewriting input).</p>
 </div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/model/doc.ts#L85">packages/core/src/model/doc.ts:85</a></li></ul></aside></section></section></details></div>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/model/doc.ts#L91">packages/core/src/model/doc.ts:91</a></li></ul></aside></section></section></details></div>
 <div class="col-sidebar">
 <div class="page-menu">
 <div class="tsd-navigation settings">

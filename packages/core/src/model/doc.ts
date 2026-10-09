@@ -63,6 +63,12 @@ export interface Block {
   readonly position?: SourcePosition;
   /** Raw source span of the whole fenced block, when available (for span rewriting). */
   readonly span?: SourceSpan;
+  /**
+   * `true` when the fenced block sits inside a container (a list item or a
+   * block quote) rather than at the top level of the document; absent for a
+   * top-level block. Patches refuse a contained block (`E_PATCH_SPAN`).
+   */
+  readonly contained?: true;
 }
 
 /** A node of a parsed document: either a prose Section or a typed Block. */
