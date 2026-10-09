@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { mdastNodeCount, mdastOf, parseDoc } from "../parse/pipeline.js";
+import type { ParseOptions } from "../parse/options.js";
+import { bindChunkCache, mdastNodeCount, mdastOf, parseDoc } from "../parse/pipeline.js";
 import {
   createParseCache,
+  PARSE_CACHE_MAX_CHUNK_NODES,
+  PARSE_CACHE_MAX_CHUNK_SOURCE_BYTES,
+  PARSE_CACHE_MAX_CHUNKS,
   PARSE_CACHE_MAX_FAILURES,
   PARSE_CACHE_MAX_SOURCE_BYTES,
   PARSE_CACHE_MAX_TREE_NODES,
@@ -204,5 +208,69 @@ describe("parse cache: mdast trees", () => {
     expect(cache.peek(src)?.doc).toBe(seeded);
     expect(mdastOf(seeded, src)).toBeUndefined();
     expect(cache.treeNodes).toBe(0);
+  });
+});
+
+describe("parse cache: chunks (#43)", () => {
+  /** A cache whose parse goes through its chunks, as the engine wires it. */
+  function chunked(opts: Parameters<typeof createParseCache>[1] = {}) {
+    const options: ParseOptions = {};
+    const cache = createParseCache((src) => parseDoc(src, options), opts);
+    bindChunkCache(options, cache.chunks);
+    return cache;
+  }
+
+  const doc = (edit: string) => `# A\n\nOne ${edit}.\n\n## B\n\nTwo *b*.\n\n## C\n\nThree.\n`;
+
+  it("defaults to 8,192 chunks, 100,000 nodes and 4 MiB of source", () => {
+    expect(PARSE_CACHE_MAX_CHUNKS).toBe(8192);
+    expect(PARSE_CACHE_MAX_CHUNK_NODES).toBe(100_000);
+    expect(PARSE_CACHE_MAX_CHUNK_SOURCE_BYTES).toBe(4 * 1024 * 1024);
+  });
+
+  it("parses an edited document through the chunks of the version before it", () => {
+    const cache = chunked();
+    const before = cache.parse(doc("x")).doc;
+    expect(cache.chunks.last).toMatchObject({ chunks: 3, parsed: 3 });
+    const after = cache.parse(doc("y")).doc;
+    expect(cache.chunks.last).toMatchObject({ chunks: 3, parsed: 1, reused: 2 });
+    // Same parse as without chunks, tree included.
+    expect(after).toEqual(parseDoc(doc("y")));
+    expect(mdastOf(after, doc("y"))).toEqual(mdastOf(parseDoc(doc("y")), doc("y")));
+    expect(before.nodes).toHaveLength(3);
+  });
+
+  it("counts the chunks' nodes and source, apart from the whole parses' trees", () => {
+    const cache = chunked();
+    cache.parse(doc("x"));
+    // Root, heading, text, paragraph and text per section; B's paragraph has
+    // three more ("Two ", emphasis and its text, ".").
+    expect(cache.chunks.nodes).toBe(18);
+    expect(cache.chunks.sourceBytes).toBe(doc("x").length);
+    expect(cache.treeNodes).toBe(mdastNodeCount(cache.parse(doc("x")).doc));
+  });
+
+  it("bounds the chunks by its chunk budgets", () => {
+    const cache = chunked({ maxChunks: 2, maxChunkNodes: 8, maxChunkSourceBytes: 40 });
+    for (let i = 0; i < 5; i += 1) {
+      cache.parse(doc(String(i)));
+      expect(cache.chunks.size).toBeLessThanOrEqual(2);
+      expect(cache.chunks.nodes).toBeLessThanOrEqual(8);
+      expect(cache.chunks.sourceBytes).toBeLessThanOrEqual(40);
+    }
+  });
+
+  it("drops the chunks on clear", () => {
+    const cache = chunked();
+    cache.parse(doc("x"));
+    cache.clear();
+    expect([cache.chunks.size, cache.chunks.nodes, cache.chunks.sourceBytes]).toEqual([0, 0, 0]);
+  });
+
+  it("a parse with other options does not use the chunks", () => {
+    const cache = chunked();
+    parseDoc(doc("x"));
+    parseDoc(doc("x"), {});
+    expect(cache.chunks.size).toBe(0);
   });
 });

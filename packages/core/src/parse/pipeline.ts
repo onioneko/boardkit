@@ -1,19 +1,15 @@
 import GithubSlugger from "github-slugger";
 import type { Root } from "mdast";
-import remarkFrontmatter from "remark-frontmatter";
-import remarkGfm from "remark-gfm";
-import remarkParse from "remark-parse";
-import { unified } from "unified";
 import { parse as parseYaml } from "yaml";
 import { type Diagnostic, diagnostic } from "../model/diagnostic.js";
 import type { ParsedDoc, Section, SourceSpan } from "../model/doc.js";
 import { validateFrontmatter } from "../model/frontmatter.js";
 import { extractBlocks } from "./blocks.js";
+import type { ChunkCache } from "./chunks.js";
+import { parseMarkdown } from "./markdown.js";
 import type { ParseOptions } from "./options.js";
 import { extractRefs } from "./refs.js";
 import { extractSections, refsBySection } from "./sections.js";
-
-const processor = unified().use(remarkParse).use(remarkFrontmatter, ["yaml"]).use(remarkGfm);
 
 const NO_REF_KINDS: ReadonlySet<"source" | "include"> = new Set();
 const DEFAULT_REF_KINDS: ReadonlySet<"source" | "include"> = new Set(["source", "include"]);
@@ -143,6 +139,22 @@ export function releaseMdast(doc: ParsedDoc): void {
   treeOfDoc.delete(doc);
 }
 
+/** The chunk cache bound to a parse options object ({@link bindChunkCache}). */
+const chunksOfOptions = new WeakMap<ParseOptions, ChunkCache>();
+
+/**
+ * Make every {@link parseDoc} called with this very `options` object parse its
+ * markdown through `chunks`, so that an edit re-parses only the sections it
+ * touches (`chunks.ts`). The result is the same as without it. The engine
+ * binds its parse cache's chunk cache to its own parse options object, which
+ * nothing outside the engine holds.
+ * @param options The parse options object.
+ * @param chunks The chunk cache to parse through.
+ */
+export function bindChunkCache(options: ParseOptions, chunks: ChunkCache): void {
+  chunksOfOptions.set(options, chunks);
+}
+
 /**
  * Parse one document into a ParsedDoc. Content errors are reported as
  * diagnostics and never thrown (fail-soft); only programming errors throw.
@@ -151,6 +163,10 @@ export function releaseMdast(doc: ParsedDoc): void {
  * engine screens such input out first (`EngineOptions.complexityLimits`) and
  * turns a throw that still happens into an `E_PARSE_FAILED` diagnostic
  * ({@link parseFailedDiagnostic}).
+ *
+ * Called with an options object bound to a chunk cache (`bindChunkCache`), as
+ * the engine's own is, it re-parses only the sections that changed since a
+ * source whose chunks are cached; the result is the same.
  * @param src The raw markdown source text to parse.
  * @param options Parse options; `blockTypes` selects which fences become typed blocks.
  * @returns The parsed document: frontmatter, sections/blocks, refs, spans, and diagnostics.
@@ -162,7 +178,8 @@ export function releaseMdast(doc: ParsedDoc): void {
 export function parseDoc(src: string, options: ParseOptions = {}): ParsedDoc {
   const blockTypes = options.blockTypes ?? new Set<string>();
   const diagnostics: Diagnostic[] = [];
-  const tree = processor.parse(src) as Root;
+  const chunks = chunksOfOptions.get(options);
+  const tree = chunks === undefined ? parseMarkdown(src) : chunks.parse(src);
 
   // Frontmatter (shape-validated by the model layer).
   let frontmatter: Record<string, unknown> = {};

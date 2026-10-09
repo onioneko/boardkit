@@ -32,7 +32,7 @@ import {
   resolveComplexityLimits,
 } from "../parse/complexity.js";
 import type { ParseOptions } from "../parse/options.js";
-import { parseDoc } from "../parse/pipeline.js";
+import { bindChunkCache, parseDoc } from "../parse/pipeline.js";
 import {
   documentSizeDiagnostic,
   exceedsDocumentLimit,
@@ -1002,6 +1002,10 @@ export function createEngine(opts: EngineOptions): Engine {
   // makes a stale entry unreachable (different content → different key), so
   // multi-process cache correctness is not required beyond that keying.
   const parseCache = createParseCache((src) => parseDoc(src, parseOptions));
+  // Every parse with the engine's own options (reads, writes, external
+  // writes) re-parses only the sections that changed since a version whose
+  // chunks the cache still holds.
+  bindChunkCache(parseOptions, parseCache.chunks);
   /** Bumped by `registerBlock`: parses made under an older value are stale. */
   let registryEpoch = 0;
   // docId → the content hash under which that doc's ParsedDoc is currently
