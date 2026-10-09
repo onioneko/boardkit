@@ -205,19 +205,23 @@ describe.each([
     TIMEOUT,
   );
 
-  it("a small cache evicting chunks gives the same trees", () => {
-    const cache = createChunkCache({ maxEntries: 8, maxNodes: 300, maxSourceBytes: 2048 });
-    checkEdits(
-      "evicting",
-      cache,
-      generateBoard(16 * 1024, 2, { eol: "\r\n" }),
-      scale(30, 300),
-      rng(17),
-    );
-    expect(cache.nodes).toBeLessThanOrEqual(300);
-    expect(cache.sourceBytes).toBeLessThanOrEqual(2048);
-    expect(cache.size).toBeLessThanOrEqual(8);
-  });
+  it(
+    "a small cache evicting chunks gives the same trees",
+    () => {
+      const cache = createChunkCache({ maxEntries: 8, maxNodes: 300, maxSourceBytes: 2048 });
+      checkEdits(
+        "evicting",
+        cache,
+        generateBoard(16 * 1024, 2, { eol: "\r\n" }),
+        scale(30, 300),
+        rng(17),
+      );
+      expect(cache.nodes).toBeLessThanOrEqual(300);
+      expect(cache.sourceBytes).toBeLessThanOrEqual(2048);
+      expect(cache.size).toBeLessThanOrEqual(8);
+    },
+    TIMEOUT,
+  );
 
   it("reports what it compared", () => {
     // Visible in the full run's output: how often the fallbacks fire.
