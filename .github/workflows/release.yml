@@ -4,6 +4,12 @@
 # Two jobs keep the checks away from the publish credentials: `verify` runs lint, build, typecheck
 # and tests with a read-only token. Only after it passes does `release` get the write and id-token
 # permissions, and it runs nothing but install, build and Changesets.
+#
+# The version pull request is opened and updated with a token minted for the `onioneko-boardkit-release`
+# GitHub App, not with GITHUB_TOKEN. Events caused by GITHUB_TOKEN do not trigger other workflows, so a
+# pull request made with it would get no CI run, and the ruleset on `main` requires those checks to merge.
+# The App token has no such limit, so CI runs on the version pull request. It is scoped to this
+# repository with contents and pull-requests write only.
 name: Release
 
 on:
@@ -53,7 +59,18 @@ jobs:
       pull-requests: write # open and update the version pull request
       id-token: write # npm trusted publishing and provenance
     steps:
+      # Without `owner` and `repositories`, the token covers only this repository.
+      - name: Create release App token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          token: ${{ steps.app-token.outputs.token }}
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
@@ -79,5 +96,6 @@ jobs:
         id: changesets
         uses: changesets/action@a45c4d594aa4e2c509dc14a9f2b3b67ba3780d0d # v1.9.0
         with:
+          github-token: ${{ steps.app-token.outputs.token }}
           version: pnpm exec changeset version
           publish: pnpm exec changeset publish
