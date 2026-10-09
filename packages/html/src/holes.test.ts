@@ -96,18 +96,23 @@ afterEach(() => {
 });
 
 describe("projectHast — holes in element content", () => {
-  it("keeps one paragraph around a ref and a block with text on both sides", async () => {
-    const src = "before {{source:cash}} middle\n```bold\nid: b1\n```\nafter\n";
+  it("keeps one paragraph around refs, and a block where the source has it", async () => {
+    // The fence interrupts the paragraph and the line after the closing fence
+    // starts a new one, as the parser read the document.
+    const src = "before {{source:cash}} middle {{source:cash}}\n```bold\nid: b1\n```\nafter\n";
     const tree = await projectHast(walkOf(src, { cash: "100" }), marking());
-    expect(tags(tree)).toEqual(["p"]);
-    const [p] = elementsOf(tree, "p");
+    expect(tags(tree)).toEqual(["p", "p", "p"]);
+    const [p, block, after] = elementsOf(tree, "p");
     expect(p?.children.map((c) => (c.type === "element" ? `<${textOf(c)}>` : c.value))).toEqual([
       "before ",
       "<source:100>",
-      " middle\n",
-      "<block:b1>",
-      "\nafter",
+      " middle ",
+      "<source:100>",
     ]);
+    expect(block?.children.map((c) => (c.type === "element" ? `<${textOf(c)}>` : c.value))).toEqual(
+      ["<block:b1>"],
+    );
+    expect(after?.children).toMatchObject([{ type: "text", value: "after" }]);
   });
 
   it("hands the handler each hole in document order, with its walk context", async () => {
@@ -248,14 +253,15 @@ describe("projectHast — holes inside attribute values", () => {
     expect(seen).toEqual(["source"]);
   });
 
-  it("folds a block token in an attribute to the empty string by default", async () => {
-    // The fence interrupts the paragraph in the source, so it is a block; once
-    // it is a token, the image's title spans the three lines around it.
+  it("never puts a block in an attribute: a fence inside an image title stays a block", async () => {
+    // The fence interrupts the paragraph in the source, so there is no image:
+    // the block is a block, and the text around it is prose.
     const src = '![alt](x "t\n```bold\nid: b1\n```\nu")\n';
     const seen: Hole[] = [];
     const tree = await projectHast(walkOf(src), marking(seen));
-    expect(elementsOf(tree, "img")[0]?.properties.title).toBe("t\n\nu");
-    expect(elementsOf(tree, "mark")).toEqual([]);
+    expect(elementsOf(tree, "img")).toEqual([]);
+    expect(elementsOf(tree, "mark").map(textOf)).toEqual(["block:b1"]);
+    expect(seen.map((h) => h.kind)).toEqual(["block"]);
   });
 
   it("folds an include token in an attribute to the empty string by default", async () => {

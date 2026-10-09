@@ -835,10 +835,29 @@ describe("projectHtml — refs inside GFM autolink literals", () => {
     expect(html).not.toMatch(TOKEN_SHAPE);
   });
 
-  it("substitutes the value into an email autolink's href", async () => {
+  it("reads a ref before `@` as the source does: no email autolink", async () => {
+    // `{` cannot start an email address, so the source holds no autolink; the
+    // value is text.
     const html = await projectWithValue("{{source:p}}@example.com\n", "abc");
-    expect(elementsOf(html, "a")[0]?.properties.href).toBe("mailto:abc@example.com");
+    expect(elementsOf(html, "a")).toEqual([]);
+    expect(html).toBe("<p>abc@example.com</p>");
+  });
+
+  it("substitutes the value into an angle-bracket autolink's href", async () => {
+    const html = await projectWithValue("<https://example.com/{{source:p}}>\n", "abc");
+    expect(elementsOf(html, "a")[0]?.properties.href).toBe("https://example.com/abc");
     expect(html).not.toMatch(TOKEN_SHAPE);
+  });
+
+  it("leaves a link's written destination as written", async () => {
+    const html = await projectWithValue(
+      "[{{source:p}}](https://example.com/{{source:p}})\n",
+      "abc",
+    );
+    expect(elementsOf(html, "a")[0]?.properties.href).toBe(
+      "https://example.com/%7B%7Bsource:p%7D%7D",
+    );
+    expect(html).toContain(">abc</a>");
   });
 
   it("still scheme-checks an href built from a ref value", async () => {

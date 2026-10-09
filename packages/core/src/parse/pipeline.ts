@@ -46,6 +46,104 @@ export function parseFailedDiagnostic(docId: string, err: unknown): Diagnostic {
 }
 
 /**
+ * A value and everything reachable from it, read-only: the type of a tree
+ * {@link mdastOf} hands out, which is frozen as well.
+ * @typeParam T The value's type.
+ */
+export type DeepReadonly<T> = T extends (infer U)[]
+  ? readonly DeepReadonly<U>[]
+  : T extends object
+    ? { readonly [K in keyof T]: DeepReadonly<T[K]> }
+    : T;
+
+/** The mdast each parse was built from, the source it was parsed from, and its node count. */
+interface KeptTree {
+  readonly src: string;
+  readonly tree: Root;
+  nodes?: number;
+  frozen?: boolean;
+}
+
+const treeOfDoc = new WeakMap<ParsedDoc, KeptTree>();
+
+/** Freeze `root` and every object reachable from it (nodes, positions, `data`, arrays). */
+function deepFreeze(root: object): void {
+  const stack: object[] = [root];
+  for (let value = stack.pop(); value !== undefined; value = stack.pop()) {
+    if (Object.isFrozen(value)) continue;
+    Object.freeze(value);
+    for (const child of Object.values(value)) {
+      if (typeof child === "object" && child !== null) stack.push(child);
+    }
+  }
+}
+
+/**
+ * The mdast tree `doc` was built from, for a projector that renders markdown
+ * structure: reading it costs no parse. {@link parseDoc} keeps each parse's
+ * tree for as long as its `ParsedDoc` lives, except in an engine, whose parse
+ * cache keeps the trees of only its most recently used parses (see
+ * `docs/guides/projections.md`); a released tree reads as `undefined`.
+ *
+ * The tree is shared by every reader, so it is deeply frozen (the first time
+ * it is handed out) and typed read-only: changing it throws. Copy the nodes
+ * you want to change. Positions are offsets into `src`.
+ * @param doc A parse made by the engine or by `parseDoc`.
+ * @param src The source `doc` was parsed from. A different source gives
+ *   `undefined`, so a tree is never paired with text it was not parsed from.
+ * @returns The frozen tree, or `undefined` when it is not kept (released, or
+ *   a `ParsedDoc` not made by the parser) or `src` is not its source.
+ * @example
+ * ```ts
+ * const tree = mdastOf(node.doc, node.src) ?? myParse(node.src);
+ * ```
+ */
+export function mdastOf(doc: ParsedDoc, src: string): DeepReadonly<Root> | undefined {
+  const kept = treeOfDoc.get(doc);
+  if (kept === undefined || kept.src !== src) return undefined;
+  if (kept.frozen !== true) {
+    // Lazily: a parse that is never projected (a write's) pays nothing.
+    deepFreeze(kept.tree);
+    kept.frozen = true;
+  }
+  return kept.tree as DeepReadonly<Root>;
+}
+
+/**
+ * The number of mdast nodes in the tree `doc` keeps, counted once: the
+ * measure of the tree's memory (about 330 to 370 bytes per node, measured on
+ * V8, whatever the markdown's shape), which per source character ranges from
+ * about 3 to over 100 times the source.
+ * @param doc A parse.
+ * @returns The node count, or `0` when `doc` keeps no tree.
+ */
+export function mdastNodeCount(doc: ParsedDoc): number {
+  const kept = treeOfDoc.get(doc);
+  if (kept === undefined) return 0;
+  if (kept.nodes === undefined) {
+    let nodes = 0;
+    const stack: unknown[] = [kept.tree];
+    for (let node = stack.pop(); node !== undefined; node = stack.pop()) {
+      nodes += 1;
+      const children = (node as { children?: unknown[] }).children;
+      if (children !== undefined) for (const child of children) stack.push(child);
+    }
+    kept.nodes = nodes;
+  }
+  return kept.nodes;
+}
+
+/**
+ * Stop keeping the mdast tree of `doc`, so it can be garbage-collected while
+ * the parse itself is still held. {@link mdastOf} then returns `undefined`
+ * for it. The engine's parse cache calls this for parses past its tree budget.
+ * @param doc A parse.
+ */
+export function releaseMdast(doc: ParsedDoc): void {
+  treeOfDoc.delete(doc);
+}
+
+/**
  * Parse one document into a ParsedDoc. Content errors are reported as
  * diagnostics and never thrown (fail-soft); only programming errors throw.
  * The one exception is input deep enough to exhaust the call stack (thousands
@@ -56,6 +154,10 @@ export function parseFailedDiagnostic(docId: string, err: unknown): Diagnostic {
  * @param src The raw markdown source text to parse.
  * @param options Parse options; `blockTypes` selects which fences become typed blocks.
  * @returns The parsed document: frontmatter, sections/blocks, refs, spans, and diagnostics.
+ *   Its mdast tree is kept with it ({@link mdastOf}) for as long as the
+ *   `ParsedDoc` is reachable, unless {@link releaseMdast} drops it first:
+ *   about 330 to 370 bytes per mdast node, which is about 3 to 6 times the
+ *   source for plain prose and over 100 times it for lists and tables.
  */
 export function parseDoc(src: string, options: ParseOptions = {}): ParsedDoc {
   const blockTypes = options.blockTypes ?? new Set<string>();
@@ -122,7 +224,7 @@ export function parseDoc(src: string, options: ParseOptions = {}): ParsedDoc {
     ...(span.position !== undefined ? { position: span.position } : {}),
   }));
 
-  return {
+  const doc: ParsedDoc = {
     frontmatter,
     ...(frontmatterSpan !== undefined ? { frontmatterSpan } : {}),
     nodes: [...sections, ...blocks],
@@ -130,4 +232,6 @@ export function parseDoc(src: string, options: ParseOptions = {}): ParsedDoc {
     refSpans: hits.map((h) => ({ start: h.offset, end: h.endOffset, ref: h.ref })),
     diagnostics,
   };
+  treeOfDoc.set(doc, { src, tree });
+  return doc;
 }

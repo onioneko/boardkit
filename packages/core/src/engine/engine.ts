@@ -991,7 +991,12 @@ export function createEngine(opts: EngineOptions): Engine {
   // (docVersion), so identical content parses once per engine instance and a
   // changed document naturally misses. A bounded LRU: at most
   // PARSE_CACHE_MAX_ENTRIES parses and PARSE_CACHE_MAX_SOURCE_BYTES (16 MiB) of
-  // source in total, because a parse can retain tens of times its source. Each
+  // source in total, because a parse can retain tens of times its source. The
+  // most recently used parses also keep their mdast tree, for projectors that
+  // read it instead of parsing again (`mdastOf`), within a separate budget of
+  // PARSE_CACHE_MAX_TREE_NODES (200,000 mdast nodes, about 65 to 75 MiB at
+  // about 330 to 370 bytes per node); past it the least recently used trees
+  // are released. Each
   // engine instance owns its own in-memory state, with no cross-process
   // coordination; content-hash keying is what
   // makes a stale entry unreachable (different content → different key), so

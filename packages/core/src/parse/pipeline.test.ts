@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import type { Block, ParsedDoc, Section } from "../model/doc.js";
-import { parseDoc } from "./pipeline.js";
+import { mdastOf, parseDoc, releaseMdast } from "./pipeline.js";
 
 const fin = readFileSync(
   fileURLToPath(new URL("../../test/fixtures/fin.md", import.meta.url)),
@@ -78,5 +78,50 @@ describe("parseDoc frontmatter failures", () => {
   it("diagnoses invalid stability value", () => {
     const doc = parseDoc("---\nstability: sometimes\n---\n\n# X", {});
     expect(doc.diagnostics.some((d) => d.code === "E_FRONTMATTER_STABILITY")).toBe(true);
+  });
+});
+
+describe("mdastOf", () => {
+  it("returns the tree a parse was built from, positions into its source", () => {
+    const src = "# Title\n\nBody {{source:cash}}.\n";
+    const doc = parseDoc(src);
+    const tree = mdastOf(doc, src);
+    expect(tree?.type).toBe("root");
+    expect(tree?.children.map((c) => c.type)).toEqual(["heading", "paragraph"]);
+    const [, paragraph] = tree?.children ?? [];
+    expect(src.slice(paragraph?.position?.start.offset, paragraph?.position?.end.offset)).toBe(
+      "Body {{source:cash}}.",
+    );
+    expect(mdastOf(doc, src)).toBe(tree);
+  });
+
+  it("hands out the tree deeply frozen, so no reader can change it for the others", () => {
+    const src = "## Head *x* {#h}\n\n- a [l](/u)\n";
+    const tree = mdastOf(parseDoc(src), src);
+    const unfrozen: string[] = [];
+    const visit = (value: unknown, path: string): void => {
+      if (typeof value !== "object" || value === null) return;
+      if (!Object.isFrozen(value)) unfrozen.push(path);
+      for (const [key, child] of Object.entries(value)) visit(child, `${path}.${key}`);
+    };
+    visit(tree, "root");
+    expect(unfrozen).toEqual([]);
+    const heading = tree?.children[0] as unknown as { children: unknown[] };
+    expect(() => {
+      heading.children.pop();
+    }).toThrow(TypeError);
+  });
+
+  it("returns nothing for a source the parse was not made from", () => {
+    const doc = parseDoc("# A\n");
+    expect(mdastOf(doc, "# B\n")).toBeUndefined();
+    expect(mdastOf({ ...doc }, "# A\n")).toBeUndefined();
+  });
+
+  it("returns nothing once the tree is released", () => {
+    const doc = parseDoc("# A\n");
+    releaseMdast(doc);
+    expect(mdastOf(doc, "# A\n")).toBeUndefined();
+    expect(doc.nodes).toHaveLength(1);
   });
 });

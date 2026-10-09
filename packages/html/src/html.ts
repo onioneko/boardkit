@@ -249,8 +249,8 @@ export async function projectHtml(
     projectorId: "html",
     cache: run.walkCache,
     ...(opts.blockTypes !== undefined ? { blockTypes: opts.blockTypes } : {}),
-    // remark-frontmatter parses the leading YAML and remark-rehype renders
-    // nothing for it, so the markdown pipeline drops it without the walk's help.
+    // The parse reads the leading YAML as a frontmatter node and remark-rehype
+    // renders nothing for it, so it is dropped without the walk's help.
     frontmatter: true,
   });
   const assembled = await projectHast(walkOf(node), htmlHandlers(walkOf, opts, run));

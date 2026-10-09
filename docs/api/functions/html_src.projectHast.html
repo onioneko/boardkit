@@ -19,8 +19,13 @@
 <div class="tsd-comment tsd-typography"><p>Project one node to an unsanitized hast tree with every hole filled by the
 caller: the html projector's per-node pipeline, for a projector whose output
 is structured (a component tree, a JSON view) rather than an HTML string.</p>
-<p>The node's prose goes through remark → hast in one pass, so a paragraph that
-holds a reference, a block or an include stays one paragraph. A heading's
+<p>The node's prose is its document's parsed mdast, turned into hast in one
+pass, so a paragraph that holds a reference, a block or an include stays one
+paragraph, and the markdown reads exactly as the parser read the document: a
+reference is spliced into the parsed text, never parsed as part of it. The
+tree comes from the parse (<code>mdastOf</code>) at no parsing cost; when the parse
+kept none, the document's source is parsed once per projection walk cache
+(<code>walk.cache</code>), or once per call without one. A heading's
 trailing <code>{#anchor}</code> is removed the way the parser removes it from the
 section heading, and becomes the heading's <code>id</code>. Includes are not projected
 for you: the include hole hands over the child node, so the caller decides
@@ -34,8 +39,9 @@ projector's exact policy before anything renders it.</p>
 <ul class="tsd-parameter-list">
 <li><span><span class="tsd-kind-parameter">walk</span>: <span class="tsd-signature-type">ProjectionWalkOptions</span></span>
 <div class="tsd-comment tsd-typography"><p>What to walk: the node, its values, the projector id whose block
-hooks to call, and the block types. Leave <code>unescapeRefs</code> unset: the markdown
-pipeline consumes the escaping backslash itself.</p>
+hooks to call, and the block types. <code>unescapeRefs</code> has no effect: the
+prose comes from the parsed tree, where the parser already consumed the
+escaping backslash of a <code>\{{</code>.</p>
 </div></li>
 <li><span><span class="tsd-kind-parameter">handlers</span>: <a href="../interfaces/html_src.HastHoleHandlers.html" class="tsd-signature-type tsd-kind-interface">HastHoleHandlers</a></span>
 <div class="tsd-comment tsd-typography"><p>What each hole becomes.</p>
@@ -49,7 +55,7 @@ pipeline consumes the escaping backslash itself.</p>
 
 </div></div><aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/html/src/holes.ts#L308">packages/html/src/holes.ts:308</a></li></ul></aside></div></li></ul></section></div>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/html/src/holes.ts#L353">packages/html/src/holes.ts:353</a></li></ul></aside></div></li></ul></section></div>
 <div class="col-sidebar">
 <div class="page-menu">
 <div class="tsd-navigation settings">
