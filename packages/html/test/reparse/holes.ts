@@ -1,40 +1,38 @@
+// The html projection as it was before it read the parsed tree: it rewrote
+// the source with hole tokens and parsed the result again. Kept unchanged, as
+// the reference the differential test (`src/projection-parity.test.ts`)
+// compares the current projection with. Not shipped.
+
 import {
   diagnostic,
   type MergedInclude,
-  mdastOf,
-  type ParsedDoc,
   type ProjectionWalkBlock,
-  type ProjectionWalkCache,
   type ProjectionWalkContext,
   type ProjectionWalkHandlers,
   type ProjectionWalkOptions,
   type SourceRef,
   type SourceSpan,
-  walkProjectionParts,
+  walkProjection,
 } from "@onioneko/boardkit-core";
 import type { Element, ElementContent, Root, RootContent } from "hast";
-import type { Root as MdRoot } from "mdast";
 import remarkFrontmatter from "remark-frontmatter";
 import remarkGfm from "remark-gfm";
 import remarkParse from "remark-parse";
 import remarkRehype from "remark-rehype";
 import { unified } from "unified";
-import { stripHeadingAnchors } from "./anchors.js";
-import { spliceTokens, type TokenEdit } from "./splice.js";
+import { stripHeadingAnchors } from "../../src/anchors.js";
 
 /**
- * Hast with holes: one projection node's prose turned into hast in a single
- * pass, with every reference, block and include left as a hole the caller
- * fills.
+ * Hast with holes: one projection node's prose run through remark → hast in a
+ * single pass, with every reference, block and include left as a hole the
+ * caller fills.
  *
- * The prose is the document's own parse: the node's top-level nodes are
- * copied out of the mdast tree the document was parsed into (`mdastOf`), so
- * no markdown is parsed again. Each hole's placeholder token is spliced into
- * that copy at the hole's source offset, so a paragraph stays one paragraph
- * however many holes it holds, and markdown text can never land inside an
- * attribute. The tokens are then swapped for the caller's content inside the
- * hast tree. A token carries a random value chosen per call and absent from
- * the node's source, so text an author writes is never mistaken for one.
+ * The walk replaces each rewritten span with a placeholder token before the
+ * markdown pipeline runs, so a paragraph stays one paragraph however many
+ * holes it holds, and markdown text can never land inside an attribute. The
+ * tokens are then swapped for the caller's content inside the hast tree. A
+ * token carries a random value chosen per call and absent from the node's
+ * source, so text an author writes is never mistaken for one.
  */
 
 /** A `{{source:…}}` whose value resolved and is not stale. */
@@ -89,8 +87,8 @@ export type Hole = SourceHole | UnresolvedHole | BlockHole | IncludeHole;
 export interface HastHoleHandlers {
   /**
    * What a reference, block or include becomes in element content. Called once
-   * per hole, in document order, after the walk and before the tree is
-   * turned into hast. A block's trailing whitespace text is trimmed from what this
+   * per hole, in document order, after the walk and before the markdown
+   * pipeline runs. A block's trailing whitespace text is trimmed from what this
    * returns.
    *
    * A paragraph that holds nothing but one include's token is replaced by what
@@ -120,9 +118,9 @@ export interface HastHoleHandlers {
     ctx: ProjectionWalkContext,
   ): ElementContent[] | Promise<ElementContent[]>;
   /**
-   * What a hole becomes inside an attribute value: a reference in an autolink
-   * (`www.example.com/{{source:p}}`, `<https://x.io/{{source:p}}>`) is in its
-   * `href` too. Defaults to the value's text for a `source` hole, the reference's
+   * What a hole becomes when markdown folds its token into an attribute value
+   * (a GFM autolink literal such as `www.example.com/{{source:p}}` puts it in
+   * `href`). Defaults to the value's text for a `source` hole, the reference's
    * verbatim source for an `unresolved` one, and `""` for a block or include,
    * which have no text form. The tree is unsanitized: a URL built from a value
    * is scheme-checked only when the caller sanitizes it.
@@ -132,61 +130,30 @@ export interface HastHoleHandlers {
   onHoleInAttribute?(hole: Hole): string;
 }
 
-/** Markdown → mdast, for a document whose parse kept no tree: the parser's own pipeline. */
-const toMdast = unified().use(remarkParse).use(remarkFrontmatter, ["yaml"]).use(remarkGfm);
-
 /**
- * mdast → hast. `clobberPrefix: ""` because the sanitizer prefixes every
+ * Markdown → hast. `clobberPrefix: ""` because the sanitizer prefixes every
  * `id` itself; letting remark-rehype prefix footnote ids too would double it.
  */
-const toHast = unified().use(remarkRehype, { clobberPrefix: "" });
+const toHast = unified()
+  .use(remarkParse)
+  .use(remarkFrontmatter, ["yaml"])
+  .use(remarkGfm)
+  .use(remarkRehype, { clobberPrefix: "" });
 
 /**
  * A fresh per-call value for placeholder tokens: 128 random bits as hex,
  * re-drawn in the (astronomically unlikely) case that the source contains it.
- * Hex keeps the token alphanumeric, so it passes through mdast → hast
+ * Hex keeps the token alphanumeric, which the markdown pipeline passes through
  * byte-for-byte.
  */
 function placeholderNonce(src: string, ranges: readonly SourceSpan[]): string {
   for (;;) {
     const bytes = crypto.getRandomValues(new Uint8Array(16));
     const nonce = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
-    // Only the node's own ranges are projected, so only they are searched (a
-    // small slice of a large document costs the slice).
+    // Only the node's own ranges reach the markdown pipeline, so only they are
+    // searched (a small slice of a large document costs the slice).
     if (!ranges.some((r) => src.slice(r.start, r.end).includes(nonce))) return nonce;
   }
-}
-
-/**
- * Trees parsed here for documents whose parse kept none, per projection walk
- * cache: a document projected in many nodes of one projection (a section
- * included many times) is parsed once per projection, not once per node.
- */
-const parsedByCache = new WeakMap<
-  ProjectionWalkCache,
-  WeakMap<ParsedDoc, { readonly src: string; readonly tree: MdRoot }>
->();
-
-/**
- * The mdast tree of the node's document: the one its parse kept
- * (`mdastOf`), or else a parse of its source with the parser's own pipeline.
- * Either way the tree is the document's parse, so the output does not depend
- * on whether a tree was kept.
- */
-function documentTree(walk: ProjectionWalkOptions): MdRoot {
-  const { doc, src } = walk.node;
-  const kept = mdastOf(doc, src);
-  if (kept !== undefined) return kept;
-  let byDoc = walk.cache === undefined ? undefined : parsedByCache.get(walk.cache);
-  if (walk.cache !== undefined && byDoc === undefined) {
-    byDoc = new WeakMap();
-    parsedByCache.set(walk.cache, byDoc);
-  }
-  const memo = byDoc?.get(doc);
-  if (memo !== undefined && memo.src === src) return memo.tree;
-  const tree = toMdast.parse(src) as MdRoot;
-  byDoc?.set(doc, { src, tree });
-  return tree;
 }
 
 /** One hole, with the content its handler gave it. */
@@ -315,13 +282,8 @@ function substituteProperties(
  * caller: the html projector's per-node pipeline, for a projector whose output
  * is structured (a component tree, a JSON view) rather than an HTML string.
  *
- * The node's prose is its document's parsed mdast, turned into hast in one
- * pass, so a paragraph that holds a reference, a block or an include stays one
- * paragraph, and the markdown reads exactly as the parser read the document: a
- * reference is spliced into the parsed text, never parsed as part of it. The
- * tree comes from the parse (`mdastOf`) at no parsing cost; when the parse
- * kept none, the document's source is parsed once per projection walk cache
- * (`walk.cache`), or once per call without one. A heading's
+ * The node's prose goes through remark → hast in one pass, so a paragraph that
+ * holds a reference, a block or an include stays one paragraph. A heading's
  * trailing `{#anchor}` is removed the way the parser removes it from the
  * section heading, and becomes the heading's `id`. Includes are not projected
  * for you: the include hole hands over the child node, so the caller decides
@@ -331,9 +293,8 @@ function substituteProperties(
  * The tree is not sanitized. Run `sanitizePanelHast` on it for the html
  * projector's exact policy before anything renders it.
  * @param walk What to walk: the node, its values, the projector id whose block
- *   hooks to call, and the block types. `unescapeRefs` has no effect: the
- *   prose comes from the parsed tree, where the parser already consumed the
- *   escaping backslash of a `\{{`.
+ *   hooks to call, and the block types. Leave `unescapeRefs` unset: the markdown
+ *   pipeline consumes the escaping backslash itself.
  * @param handlers What each hole becomes.
  * @returns The node's hast tree, unsanitized.
  * @example
@@ -356,29 +317,19 @@ export async function projectHast(
   const { node } = walk;
   const nonce = placeholderNonce(node.src, node.ranges);
   const holes: { readonly hole: Hole; readonly ctx: ProjectionWalkContext }[] = [];
-  const tokens: TokenEdit[] = [];
-  const token = (hole: Hole, ctx: ProjectionWalkContext, span: SourceSpan | undefined): string => {
+  const token = (hole: Hole, ctx: ProjectionWalkContext): string => {
     holes.push({ hole, ctx });
-    const value = `bk${nonce}x${holes.length - 1}z`;
-    // The walk always passes the span.
-    if (span !== undefined) {
-      const kind = hole.kind === "block" ? "block" : "text";
-      tokens.push({ kind, start: span.start, end: span.end, token: value });
-    }
-    return value;
+    return `bk${nonce}x${holes.length - 1}z`;
   };
 
-  // The walk plans the holes and calls the block hooks; the prose itself comes
-  // from the document's parsed tree, so it is not collected.
   const walkHandlers: ProjectionWalkHandlers<string> = {
-    onProse: () => "",
-    onSource: (value, ref, ctx, span) => token({ kind: "source", ref, value }, ctx, span),
-    onBlock: (block, ctx, span) =>
-      token({ kind: "block", block: detach(block, walk.projectorId) }, ctx, span),
-    onInclude: (include, ctx, span) => token({ kind: "include", include }, ctx, span),
+    onProse: (prose) => prose,
+    onSource: (value, ref, ctx) => token({ kind: "source", ref, value }, ctx),
+    onBlock: (block, ctx) => token({ kind: "block", block: detach(block, walk.projectorId) }, ctx),
+    onInclude: (include, ctx) => token({ kind: "include", include }, ctx),
     ...(handlers.onUnresolved !== undefined
       ? {
-          onUnresolvedSource: (ref, state, raw, ctx, span) =>
+          onUnresolvedSource: (ref, state, raw, ctx) =>
             token(
               {
                 kind: "unresolved",
@@ -388,12 +339,11 @@ export async function projectHast(
                 ...(state.value !== undefined ? { value: state.value } : {}),
               },
               ctx,
-              span,
             ),
         }
       : {}),
   } satisfies ProjectionWalkHandlers<string>;
-  walkProjectionParts(walk, walkHandlers);
+  const rewritten = walkProjection(walk, walkHandlers);
 
   // In document order, one at a time: a handler that projects an include (or
   // reports a diagnostic) sees the same order on every call.
@@ -411,9 +361,9 @@ export async function projectHast(
     filled.push({ hole, nodes });
   }
 
-  const mdast = spliceTokens(documentTree(walk), node.src, node.ranges, tokens);
-  stripHeadingAnchors(mdast, node.src);
-  const tree = (await toHast.run(mdast)) as Root;
+  const mdast = toHast.parse(rewritten);
+  stripHeadingAnchors(mdast, rewritten);
+  const tree = await toHast.run(mdast);
   const inAttribute = (hole: Hole): string =>
     handlers.onHoleInAttribute?.(hole) ?? attributeText(hole);
   substitute(tree, new RegExp(`bk${nonce}x(\\d+)z`, "g"), filled, inAttribute);

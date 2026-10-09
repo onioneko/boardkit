@@ -1,3 +1,8 @@
+// The html projection as it was before it read the parsed tree: it rewrote
+// the source with hole tokens and parsed the result again. Kept unchanged, as
+// the reference the differential test (`src/projection-parity.test.ts`)
+// compares the current projection with. Not shipped.
+
 import {
   type AnyBlockType,
   type Block,
@@ -21,8 +26,8 @@ import type { Element, ElementContent, Nodes } from "hast";
 import rehypeStringify from "rehype-stringify";
 import { unified } from "unified";
 import { visit } from "unist-util-visit";
+import { includeWrapper, sanitizePanelHast } from "../../src/sanitize.js";
 import { type HastHoleHandlers, projectHast } from "./holes.js";
-import { includeWrapper, sanitizePanelHast } from "./sanitize.js";
 
 /**
  * html projection: full HTML suitable for panel embedding, produced through
@@ -249,8 +254,8 @@ export async function projectHtml(
     projectorId: "html",
     cache: run.walkCache,
     ...(opts.blockTypes !== undefined ? { blockTypes: opts.blockTypes } : {}),
-    // The parse reads the leading YAML as a frontmatter node and remark-rehype
-    // renders nothing for it, so it is dropped without the walk's help.
+    // remark-frontmatter parses the leading YAML and remark-rehype renders
+    // nothing for it, so the markdown pipeline drops it without the walk's help.
     frontmatter: true,
   });
   const assembled = await projectHast(walkOf(node), htmlHandlers(walkOf, opts, run));

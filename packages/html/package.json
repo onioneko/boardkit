@@ -62,7 +62,7 @@
     "@types/hast": "catalog:"
   },
   "peerDependencies": {
-    "@onioneko/boardkit-core": "workspace:>=0.3.0 <1.0.0"
+    "@onioneko/boardkit-core": "workspace:>=0.4.0 <1.0.0"
   },
   "devDependencies": {
     "@onioneko/boardkit-core": "workspace:^",

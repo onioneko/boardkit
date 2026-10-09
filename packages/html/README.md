@@ -135,11 +135,16 @@ const tree = sanitizePanelHast(await projectHast(walkOf(input.merged.root), hand
 // …convert `tree` to your own structure.
 ```
 
-- **One pass of markdown per node.** The node's prose goes through remark →
-  hast once, with a placeholder token in place of each hole, so a paragraph
-  that holds a reference or a block stays one paragraph. The tokens carry a
-  random value chosen per call and absent from the source, so text an author
-  writes is never mistaken for one.
+- **No second parse.** The node's prose is the document's own parse: its
+  top-level mdast nodes are copied out of the tree the parser made
+  (`mdastOf` in `@onioneko/boardkit-core`), a placeholder token is spliced in
+  at each hole's source offset, and the copy goes to hast in one pass. So a
+  paragraph that holds a reference or a block stays one paragraph, the
+  markdown around a hole reads as the parser read it, and projecting a version
+  the engine has already parsed parses nothing. When the parse kept no tree,
+  the document's source is parsed once per projection walk cache. The tokens
+  carry a random value chosen per call and absent from the source, so text an
+  author writes is never mistaken for one.
 - **Holes.** `source` (a resolved value), `block` (the block with its hook
   already dispatched for `walk.projectorId`) and `include` (the merged child
   node) reach `onHole`, once each, in document order; the handler may be
@@ -149,11 +154,11 @@ const tree = sanitizePanelHast(await projectHast(walkOf(input.merged.root), hand
   prose unless `onUnresolved` is supplied, which then receives it as an
   `unresolved` hole (`ref`, `raw`, `stale`, and for a stale one the source's
   degradation marker as `value`).
-- **Attributes.** Markdown can fold a token into an attribute value (a GFM
-  autolink literal such as `www.example.com/{{source:p}}` puts it in `href`).
-  There a hole becomes `onHoleInAttribute(hole)`, by default the value's text
-  for `source`, the raw reference for `unresolved`, and `""` for a block or
-  include.
+- **Attributes.** A reference in an autolink (`www.example.com/{{source:p}}`,
+  `<https://example.com/{{source:p}}>`) is in its `href` too. There a hole
+  becomes `onHoleInAttribute(hole)`, by default the value's text for `source`,
+  the raw reference for `unresolved`, and `""` for an include. A link written
+  with a destination (`[text](url)`) keeps its URL as written.
 - **Unsanitized.** `projectHast` returns the tree as built, hook output and
   all. Run `sanitizePanelHast` on it before anything renders it. Build
   include wrappers with `includeWrapper`: the sanitizer keeps provenance on
