@@ -215,12 +215,40 @@ describe("chunked parse", () => {
       expect(cache.size).toBe(0);
     });
 
-    it("catches after parsing a definition the text scan misses (in a list item)", () => {
+    it("sees a definition behind a list item marker in the text", () => {
       const cache = newCache();
-      expect(same(cache, "# A\n\nSee [spec].\n\n# Links\n\n- [spec]: /s\n")).toMatchObject({
+      expect(same(cache, "# A\n\nSee [spec].\n\n# Links\n\n1. [spec]: /s\n")).toMatchObject({
+        whole: "definitions",
+        parsed: 1,
+      });
+    });
+
+    it("catches after parsing a definition the text scan misses (in a nested list item)", () => {
+      const cache = newCache();
+      expect(same(cache, "# A\n\nSee [spec].\n\n# Links\n\n- - [spec]: /s\n")).toMatchObject({
         whole: "definitions",
         parsed: 3,
       });
+    });
+
+    it("labels holding a character reference or an escape (regression)", () => {
+      const cache = newCache();
+      for (const doc of [
+        // Caught by the text scan.
+        "- [R&amp;D]: /u\n# h\nsee [R&amp;D] here\n",
+        "1. [a\\*b]: /u\n# h\n[a\\*b]\n",
+        "- [^R&amp;D]: n\n# h\nnote[^R&amp;D]\n",
+        // Caught only after parsing: the scan misses the definition, or is
+        // fooled by a definition-like line in the chunk that uses it.
+        "- - [R&amp;D]: /u\n# h\nsee [R&amp;D] here\n",
+        "- - [a\\*b]: /u\n# h\n[a\\*b]\n",
+        "- - [^R&amp;D]: n\n# h\nnote[^R&amp;D]\n",
+        "- - [x&#93;y]: /u\n# h\n[x&#93;y]\n",
+        "[R&amp;D]: /u\n# h\n[R&amp;D]: is a [R&amp;D] thing\n",
+        "[a\\*b]:x\n#\r[a\\*b]:",
+      ]) {
+        expect(same(cache, doc).whole).toBe("definitions");
+      }
     });
 
     it("a label broken over block quote lines still counts as used", () => {

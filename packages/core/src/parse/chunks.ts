@@ -33,7 +33,7 @@ type Point = Position["start"];
  *   whole source is parsed in one go instead.
  *
  * The rules encode block-structure facts about this markdown parser, so the
- * differential tests (`chunks.test.ts`, `scripts/parse-differential.ts`) must
+ * differential tests (`chunks.test.ts`, `chunks.differential.test.ts`) must
  * pass again after any upgrade of `remark-parse`, `remark-gfm`,
  * `remark-frontmatter` or the micromark packages under them.
  * @module
@@ -310,7 +310,10 @@ function scan(root: Root): { labels: string[]; nodes: number } {
   for (let node = stack.pop(); node !== undefined; node = stack.pop()) {
     nodes += 1;
     if (node.type === "definition" || node.type === "footnoteDefinition") {
-      labels.push(labelKey(node.label ?? node.identifier));
+      // The identifier, not the label: the label is decoded (escapes and
+      // character references resolved), while references match on the raw
+      // text, which is what `bracketKeys` sees too.
+      labels.push(labelKey(node.identifier));
     }
     if ("children" in node) for (const child of node.children) stack.push(child as Nodes);
   }
@@ -549,8 +552,12 @@ function usesForeignLabel(src: string, parts: readonly Part[]): boolean {
   return false;
 }
 
-/** A line that looks like a link or footnote definition: its label, without a footnote's `^`. */
-const DEFINITION_LINE = /^[ \t>]*\[\^?((?:[^\\[\]\r\n]|\\.){1,999})\]:/gm;
+/**
+ * A line that looks like a link or footnote definition, behind block quote
+ * markers or a list item marker: its label, without a footnote's `^`.
+ */
+const DEFINITION_LINE =
+  /^[ \t>]*(?:(?:[-+*]|\d{1,9}[.)])[ \t]+)?\[\^?((?:[^\\[\]\r\n]|\\.){1,999})\]:/gm;
 
 /**
  * Does the text already show that some chunk uses a label another chunk
