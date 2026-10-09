@@ -42,6 +42,19 @@ export function applyPatch(input: PatchInput): { src: string; diagnostics: reado
     };
   }
 
+  if (block.contained === true) {
+    return {
+      src,
+      diagnostics: [
+        diagnostic(
+          "E_PATCH_SPAN",
+          `block ${block.blockId} is inside a list item or block quote and cannot be patched`,
+          { nodeId: block.blockId },
+        ),
+      ],
+    };
+  }
+
   const fence = locateFence(src, span);
   if (typeof fence === "string") {
     return {
@@ -51,9 +64,23 @@ export function applyPatch(input: PatchInput): { src: string; diagnostics: reado
       ],
     };
   }
-  const { bodyStart, closeStart } = fence;
+  const { bodyStart, closeStart, indent } = fence;
 
-  const body = src.slice(bodyStart, closeStart);
+  // Markdown strips up to the fence's indent from each body line; the YAML is
+  // read as markdown reads it and written back with that indent restored.
+  const body = stripIndent(src.slice(bodyStart, closeStart), indent);
+  if (body === undefined) {
+    return {
+      src,
+      diagnostics: [
+        diagnostic(
+          "E_PATCH_SPAN",
+          `block ${block.blockId} body indentation has tabs and cannot be patched`,
+          { nodeId: block.blockId },
+        ),
+      ],
+    };
+  }
   let doc: Document.Parsed;
   try {
     doc = parseDocument(body);
@@ -86,9 +113,17 @@ export function applyPatch(input: PatchInput): { src: string; diagnostics: reado
   // A string holding a fence run must never start a line of the body: keep
   // it on its own key's line (double-quoted when it has line breaks, and no
   // folding anywhere). Bodies without such strings serialize as before.
-  const nextBody = quoteFenceRuns(doc)
-    ? doc.toString({ lineWidth: 0, doubleQuotedMinMultiLineLength: Number.MAX_SAFE_INTEGER })
-    : doc.toString();
+  let yamlText: string;
+  if (holdsFenceRun(delta) || docHoldsFenceRun(doc)) {
+    quoteFenceRuns(doc);
+    yamlText = doc.toString({
+      lineWidth: 0,
+      doubleQuotedMinMultiLineLength: Number.MAX_SAFE_INTEGER,
+    });
+  } else {
+    yamlText = doc.toString();
+  }
+  const nextBody = addIndent(yamlText, indent);
 
   // The new body must not close the block early: everything after the
   // closing fence is byte-identical, so this keeps the rest of the document
@@ -134,7 +169,7 @@ const FENCE_LIKE_LINE = /^([ \t]*)(`+|~+)[ \t]*$/;
 function locateFence(
   src: string,
   span: { readonly start: number; readonly end: number },
-): (Fence & { bodyStart: number; closeStart: number }) | string {
+): (Fence & { bodyStart: number; closeStart: number; indent: number }) | string {
   const lineStart = lineStartBefore(src, span.start);
   const opener = OPENING_FENCE.exec(src.slice(lineStart, span.end));
   if (opener === null || !/^ *$/.test(src.slice(lineStart, span.start))) {
@@ -157,7 +192,8 @@ function locateFence(
   if (closeStart < bodyStart || !closesFence(src.slice(closeStart, span.end), fence)) {
     return "closing fence not found";
   }
-  return { ...fence, bodyStart, closeStart };
+  const indent = (opener[0] as string).length - run.length;
+  return { ...fence, bodyStart, closeStart, indent };
 }
 
 /** The offset of the start of the line holding `offset` (after LF, CR or CRLF). */
@@ -189,13 +225,67 @@ function closingFenceLine(body: string, fence: Fence): number | undefined {
 }
 
 /**
+ * Remove up to `indent` leading spaces from each line, as markdown does for
+ * the content of a fence indented by that much.
+ * @returns The stripped text, or `undefined` when a tab falls within the
+ *   indent (markdown would split it into columns).
+ */
+function stripIndent(text: string, indent: number): string | undefined {
+  if (indent === 0) return text;
+  let tabbed = false;
+  const out = text.replace(
+    new RegExp(`(^|\\r\\n|\\r|\\n)( {0,${indent}})(\\t?)`, "g"),
+    (_, eol, spaces, tab) => {
+      if (tab !== "" && spaces.length < indent) tabbed = true;
+      return eol + tab;
+    },
+  );
+  return tabbed ? undefined : out;
+}
+
+/** Prefix every non-empty line with `indent` spaces (the inverse of {@link stripIndent}). */
+function addIndent(text: string, indent: number): string {
+  if (indent === 0) return text;
+  const pad = " ".repeat(indent);
+  // Split at markdown's line endings only (not U+2028, which `m` would use).
+  return text.replace(/(^|\r\n|\r|\n)(?=[^\r\n])/g, `$1${pad}`);
+}
+
+/** Whether a delta value holds a string (or key) with a fence run. */
+function holdsFenceRun(value: unknown): boolean {
+  if (typeof value === "string") return FENCE_RUN.test(value);
+  if (Array.isArray(value)) return value.some(holdsFenceRun);
+  if (value instanceof Map) {
+    for (const [k, v] of value) if (holdsFenceRun(k) || holdsFenceRun(v)) return true;
+    return false;
+  }
+  if (typeof value === "object" && value !== null) {
+    return Object.entries(value).some(([k, v]) => FENCE_RUN.test(k) || holdsFenceRun(v));
+  }
+  return false;
+}
+
+/** Whether any string scalar already in the document holds a fence run. */
+function docHoldsFenceRun(doc: Document.Parsed): boolean {
+  let found = false;
+  visit(doc, {
+    Scalar(_, node) {
+      if (typeof node.value === "string" && FENCE_RUN.test(node.value)) {
+        found = true;
+        return visit.BREAK;
+      }
+      return undefined;
+    },
+  });
+  return found;
+}
+
+/**
  * Mark every string scalar holding a fence run (3 backticks or tildes) that
  * spans lines, or is styled as a block scalar, as double-quoted, so it is
  * serialized on one line with escaped line breaks.
- * @returns Whether the document holds any string with a fence run.
  */
-function quoteFenceRuns(doc: Document.Parsed): boolean {
-  let found = false;
+function quoteFenceRuns(doc: Document.Parsed): void {
   visit(doc, {
     Pair(_, pair) {
       // Values set from the delta may be plain JS values; make them nodes so
@@ -205,7 +295,6 @@ function quoteFenceRuns(doc: Document.Parsed): boolean {
     },
     Scalar(_, node) {
       if (typeof node.value !== "string" || !FENCE_RUN.test(node.value)) return;
-      found = true;
       if (
         LINE_BREAK.test(node.value) ||
         node.type === Scalar.BLOCK_LITERAL ||
@@ -215,5 +304,4 @@ function quoteFenceRuns(doc: Document.Parsed): boolean {
       }
     },
   });
-  return found;
 }

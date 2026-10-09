@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { Document } from "yaml";
+import { Document, parseDocument } from "yaml";
 import { parseDoc } from "../parse/pipeline.js";
 import { applyPatch } from "./patch.js";
 
@@ -97,6 +97,21 @@ tail text
 `;
 
 /**
+ * A document whose block `s` sits after `container` (a list marker or a
+ * block quote marker, or nothing for top level), its fence lines indented by
+ * `indent` spaces, with a top-level block after it.
+ */
+function containerHost(container: string, indent: number, fence: string): string {
+  const quote = container.includes(">") ? container.slice(container.indexOf(">")) : "";
+  const listIndent = container.includes(">") ? container.indexOf(">") : container.length;
+  const prefix = container === "" ? "" : `${" ".repeat(listIndent)}${quote}`;
+  const lead = container === "" ? "" : `${container}item\n${prefix.trimEnd()}\n`;
+  const pad = prefix + " ".repeat(indent);
+  const lines = [`${fence}status`, "id: s", "value: pending", "meta:", "  owner: ana", fence];
+  return `# Plan\n\n${lead}${lines.map((l) => pad + l).join("\n")}\n\n## Next\n\n\`\`\`decision\nid: d\nstate: draft\n\`\`\`\n\ntail text\n`;
+}
+
+/**
  * The patch invariant: only the target block's attrs change. Every other
  * node, the frontmatter and the diagnostics stay as they were, and the target
  * still spans exactly its own fences.
@@ -112,7 +127,10 @@ function expectOnlyTargetChanged(
   const result = applyPatch({ src: srcText, block: target, delta });
   if (result.diagnostics.length > 0) {
     expect(result.src).toBe(srcText);
-    expect(result.diagnostics.map((d) => d.code)).toEqual(["E_PATCH_FENCE"]);
+    // A block in a list item or block quote is refused; a top-level one only
+    // when its new body could still close the fence.
+    const code = target.contained === true ? "E_PATCH_SPAN" : "E_PATCH_FENCE";
+    expect(result.diagnostics.map((d) => d.code)).toEqual([code]);
     return { applied: false, next: srcText };
   }
   const after = parseDoc(result.src, { blockTypes: TYPES });
@@ -291,6 +309,44 @@ describe("applyPatch keeps a block inside its fences", () => {
     }
   });
 
+  it("holds the invariant for fences indented 0-3 spaces, at top level and in containers", () => {
+    let applied = 0;
+    let refused = 0;
+    for (let seed = 1; seed <= 400; seed += 1) {
+      const rand = prng(seed);
+      const container = pick(rand, ["", "- ", "1. ", "> ", "- > "]);
+      const indent = Math.floor(rand() * 4);
+      const doc = containerHost(container, indent, pick(rand, ["```", "~~~", "````"]));
+      const delta: Record<string, unknown> = { note: adversarialString(rand) };
+      if (rand() < 0.5) delta.meta = { state: adversarialString(rand), owner: "mallory" };
+      if (rand() < 0.3) delta.list = [adversarialString(rand), { k: adversarialString(rand) }];
+      if (rand() < 0.3) delta.value = "closed";
+      try {
+        if (expectOnlyTargetChanged(doc, "s", delta).applied) applied += 1;
+        else refused += 1;
+      } catch (error) {
+        throw new Error(
+          `seed ${seed} (${ascii(container)}, indent ${indent}, ${ascii(delta)}): ${String(error)}`,
+        );
+      }
+    }
+    // Both outcomes are exercised: top-level blocks apply, contained ones are refused.
+    expect(applied).toBeGreaterThan(50);
+    expect(refused).toBeGreaterThan(50);
+  });
+
+  it("keeps nested keys nested under a fence indented 1-3 spaces", () => {
+    for (const indent of [1, 2, 3]) {
+      const pad = " ".repeat(indent);
+      const doc = `# A\n\n${pad}\`\`\`status\n${pad}id: s\n${pad}value: open\n${pad}\`\`\`\n\ntail\n`;
+      const delta = { note: { state: "approved", owner: "mallory" }, log: "a\nb" };
+      const { applied, next } = expectOnlyTargetChanged(doc, "s", delta);
+      expect(applied).toBe(true);
+      const block = blockOf(next, new Set(["status"]));
+      expect(block.attrs).toEqual({ id: "s", value: "open", ...delta });
+    }
+  });
+
   it("round-trips normal values unchanged", () => {
     const values: Record<string, unknown>[] = [
       { value: "approved" },
@@ -307,6 +363,13 @@ describe("applyPatch keeps a block inside its fences", () => {
       expect(result.diagnostics).toEqual([]);
       expectOnlyTargetChanged(host, "s", delta);
     }
+    // Without a fence run the body serializes exactly as the yaml library
+    // would (the same fold column for long values).
+    const long = { note: "word ".repeat(40).trim(), extra: "w ".repeat(60).trim() };
+    const reference = parseDocument("id: d1\nvalue: pending\nnote: keep me   # comment stays\n");
+    for (const [k, v] of Object.entries(long)) reference.setIn([k], v);
+    const folded = applyPatch({ src, block: blockOf(src, new Set(["status"])), delta: long });
+    expect(folded.src).toBe(`# T\n\n\`\`\`status\n${reference.toString()}\`\`\`\n\nafter text\n`);
     // A plain value serializes as before: unquoted, on its key's line.
     const block = blockOf(src, new Set(["status"]));
     const plain = applyPatch({ src, block, delta: { value: "uses `code` here" } });
