@@ -69,11 +69,33 @@ top-level nodes, and puts each reference, block and include in at its source off
 markup around a reference reads exactly as the parser read the document, and projecting a version
 the engine has already parsed costs no parse.
 
-- **Memory.** A parse's mdast tree takes about 10 to 14 times its source in memory, about 2.6 MiB
-  for a 256 KiB document. The engine's parse cache keeps the trees of its most recently used
-  parses whose sources add up to at most 4 MiB, so about 40 to 56 MiB of trees, on top of the
-  parses themselves (16 MiB of source). Past that budget the least recently used trees are
-  released; their parses stay cached.
+Before 0.4.0 the html projector replaced each hole with an alphanumeric placeholder and parsed the
+result, and the placeholder could change what the markdown around it meant. Reading the parsed
+tree changed the output in these cases; everything else renders byte for byte as before:
+
+- **A typed block directly next to a text line** (no blank line between them) is its own
+  paragraph. The placeholder glued the text line into the block's paragraph.
+- **Emphasis next to a reference.** `foo*{{source:a}}*bar` and `**{{source:a}}**bar` render the
+  `*` as text, as the source's `{{`/`}}` (punctuation) make them non-flanking. The placeholder's
+  letters made them emphasis.
+- **An email autolink next to a reference.** `{{source:p}}@example.com` is text: `{` cannot start
+  an email address. The placeholder made it a `mailto:` link.
+- **A heading anchor next to a reference.** In `## {{source:p}}_a {#b_}` the `_`s are emphasis, so
+  the heading has no anchor, as the parser reads it (its section id is the slug). The placeholder
+  made the `_` intraword, and the projection found the anchor `b_`.
+- **A reference inside a reference-link label.** `[{{source:a}}]` with a definition
+  `[{{source:a}}]: url` (and the collapsed `[x {{source:a}}][]`) is a link to the definition's URL,
+  as written; the label shows the value. The placeholder kept the label from matching, so it was
+  text.
+
+- **Frozen.** The tree is shared by every projection of the same content, so `mdastOf` hands it
+  out deeply frozen and typed `DeepReadonly`: writing to it throws. Copy the nodes you change.
+- **Memory.** A parse's mdast tree takes about 330 to 370 bytes per node. Per source character
+  that is about 3 to 6 times the source for plain prose and over 100 times for lists and tables,
+  so the budget counts nodes, not source. The engine's parse cache keeps the trees of its most
+  recently used parses up to 200,000 nodes in all (`PARSE_CACHE_MAX_TREE_NODES`), about 65 to
+  75 MiB, on top of the parses themselves (16 MiB of source). Past that budget the least recently
+  used trees are released; their parses stay cached.
 - **Released trees.** A document whose tree was released (or a `ParsedDoc` not made by the parser)
   is parsed again from its source, once per projection however many of its sections are
   included. The output is the same either way.
@@ -379,7 +401,7 @@ A projector that renders headings from its own markdown parse applies it to the 
 run of plain text, as the parser does.
 
 The html projection reads headings from the document's parse, so it finds exactly the anchors the
-parser finds, a reference next to `_` or `*` included.
+parser finds, also next to a reference.
 
 One limit of the html projection:
 
