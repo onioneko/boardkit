@@ -1,5 +1,5 @@
 ---
-"@onioneko/boardkit-core": patch
+"@onioneko/boardkit-core": minor
 ---
 
 A block patch now changes only its target block; it can no longer close the block early and add or hide blocks after it.
