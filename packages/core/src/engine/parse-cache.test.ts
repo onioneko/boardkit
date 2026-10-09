@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { parseDoc } from "../parse/pipeline.js";
+import { mdastOf, parseDoc } from "../parse/pipeline.js";
 import {
   createParseCache,
   PARSE_CACHE_MAX_FAILURES,
   PARSE_CACHE_MAX_SOURCE_BYTES,
+  PARSE_CACHE_MAX_TREE_SOURCE_BYTES,
 } from "./parse-cache.js";
 import { docVersion } from "./version.js";
 
@@ -129,5 +130,67 @@ describe("parse cache: peek and seed", () => {
     const doc = parseDoc("# A\n");
     cache.seed("# A\n", doc);
     expect(cache.parse("# A\n").doc).toBe(doc);
+  });
+});
+
+describe("parse cache: mdast trees", () => {
+  const docOf = (i: number, size: number): string => `# Doc ${i}\n\n${"x".repeat(size - 20)}\n`;
+  const kept = (cache: ReturnType<typeof createParseCache>, src: string): boolean => {
+    const hit = cache.peek(src);
+    return hit !== undefined && mdastOf(hit.doc, src) !== undefined;
+  };
+
+  it("defaults to a 4 MiB tree budget", () => {
+    expect(PARSE_CACHE_MAX_TREE_SOURCE_BYTES).toBe(4 * 1024 * 1024);
+  });
+
+  it("keeps the trees of the most recently used parses within the tree budget", () => {
+    const cache = createParseCache((src) => parseDoc(src), {
+      maxSourceBytes: 64 * 1024,
+      maxTreeSourceBytes: 16 * 1024,
+    });
+    const docs = Array.from({ length: 6 }, (_, i) => docOf(i, 4 * 1024));
+    for (const src of docs) {
+      cache.parse(src);
+      expect(cache.treeSourceBytes).toBeLessThanOrEqual(16 * 1024);
+    }
+    // Every parse stays cached; only the four most recent keep their tree.
+    expect(cache.size).toBe(6);
+    expect(docs.map((src) => kept(cache, src))).toEqual([false, false, true, true, true, true]);
+  });
+
+  it("counts a hit as a use, so a document read again keeps its tree", () => {
+    const cache = createParseCache((src) => parseDoc(src), { maxTreeSourceBytes: 8 * 1024 });
+    const [a, b, c] = [docOf(0, 4 * 1024), docOf(1, 4 * 1024), docOf(2, 4 * 1024)];
+    cache.parse(a);
+    cache.parse(b);
+    cache.parse(a); // a is now the most recent
+    cache.parse(c);
+    expect([a, b, c].map((src) => kept(cache, src))).toEqual([true, false, true]);
+  });
+
+  it("releases the tree of a parse that leaves the cache", () => {
+    const cache = createParseCache((src) => parseDoc(src), { maxSourceBytes: 8 * 1024 });
+    const first = cache.parse(docOf(0, 4 * 1024)).doc;
+    const second = cache.parse(docOf(1, 4 * 1024));
+    cache.parse(docOf(2, 4 * 1024)); // evicts the first
+    expect(mdastOf(first, docOf(0, 4 * 1024))).toBeUndefined();
+    cache.delete(second.hash);
+    expect(mdastOf(second.doc, docOf(1, 4 * 1024))).toBeUndefined();
+    const third = cache.peek(docOf(2, 4 * 1024));
+    expect(third).toBeDefined();
+    cache.clear();
+    expect(mdastOf(third?.doc ?? parseDoc(""), docOf(2, 4 * 1024))).toBeUndefined();
+    expect(cache.treeSourceBytes).toBe(0);
+  });
+
+  it("caches a source larger than the tree budget without its tree", () => {
+    const cache = createParseCache((src) => parseDoc(src), { maxTreeSourceBytes: 1024 });
+    const src = docOf(0, 4 * 1024);
+    const seeded = parseDoc(src);
+    cache.seed(src, seeded);
+    expect(cache.peek(src)?.doc).toBe(seeded);
+    expect(mdastOf(seeded, src)).toBeUndefined();
+    expect(cache.treeSourceBytes).toBe(0);
   });
 });

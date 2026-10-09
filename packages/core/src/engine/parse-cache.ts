@@ -1,5 +1,6 @@
 import { LRUCache } from "lru-cache";
 import type { ParsedDoc } from "../model/doc.js";
+import { releaseMdast } from "../parse/pipeline.js";
 import { docVersion } from "./version.js";
 
 /** Most parses the engine keeps at once. */
@@ -13,6 +14,18 @@ export const PARSE_CACHE_MAX_ENTRIES = 256;
  * source larger than the whole budget is parsed but never cached.
  */
 export const PARSE_CACHE_MAX_SOURCE_BYTES = 16 * 1024 * 1024;
+
+/**
+ * Most source whose mdast trees the engine's parse cache keeps at once: 4 MiB,
+ * counted in UTF-16 code units of the sources. A parse's mdast tree takes about
+ * 10 to 14 times its source in memory (about 2.6 MiB for a 256 KiB document),
+ * so this budget holds about 40 to 56 MiB of trees. The html projection reads a
+ * kept tree instead of parsing the markdown again (`mdastOf`); the trees
+ * of the least recently used parses past the budget are released, and those
+ * parses stay cached without them. A source larger than the whole budget keeps
+ * no tree.
+ */
+export const PARSE_CACHE_MAX_TREE_SOURCE_BYTES = 4 * 1024 * 1024;
 
 /**
  * Most failed parses the engine remembers at once. A parse that throws (deep
@@ -59,6 +72,8 @@ export interface ParseCache {
   readonly size: number;
   /** Total size of the sources whose parses are cached. */
   readonly sourceBytes: number;
+  /** Total size of the sources whose cached parses still keep their mdast tree. */
+  readonly treeSourceBytes: number;
 }
 
 /** Freeze a value and everything reachable from it (plain YAML data: objects and arrays). */
@@ -76,30 +91,61 @@ function deepFreeze(value: unknown): void {
  * Cached parses are shared by every reader, so block attrs are deep-frozen on
  * insert: a block hook or projector that tries to modify them throws (and fails
  * soft) instead of changing what later reads see.
+ *
+ * Each parse keeps its mdast tree (`mdastOf`) while it is among the most
+ * recently used parses whose sources fit the tree budget. Past it, the least
+ * recently used parse's tree is released (`releaseMdast`); the parse
+ * stays cached. A parse that leaves the cache releases its tree too.
  * @param parse Parses one source (the engine passes `parseDoc` with its options).
- * @param opts Bounds; default to {@link PARSE_CACHE_MAX_ENTRIES} and {@link PARSE_CACHE_MAX_SOURCE_BYTES}.
+ * @param opts Bounds; default to {@link PARSE_CACHE_MAX_ENTRIES},
+ *   {@link PARSE_CACHE_MAX_SOURCE_BYTES} and {@link PARSE_CACHE_MAX_TREE_SOURCE_BYTES}.
  * @returns The cache.
  */
 export function createParseCache(
   parse: (src: string) => ParsedDoc,
-  opts: { readonly maxEntries?: number; readonly maxSourceBytes?: number } = {},
+  opts: {
+    readonly maxEntries?: number;
+    readonly maxSourceBytes?: number;
+    readonly maxTreeSourceBytes?: number;
+  } = {},
 ): ParseCache {
+  // The parses that still keep their tree, by content hash. Evicting one
+  // releases its tree; the parse itself stays in `cache`.
+  const trees = new LRUCache<string, ParsedDoc>({
+    max: opts.maxEntries ?? PARSE_CACHE_MAX_ENTRIES,
+    maxSize: opts.maxTreeSourceBytes ?? PARSE_CACHE_MAX_TREE_SOURCE_BYTES,
+    dispose: (doc) => releaseMdast(doc),
+  });
   const cache = new LRUCache<string, ParsedDoc>({
     max: opts.maxEntries ?? PARSE_CACHE_MAX_ENTRIES,
     maxSize: opts.maxSourceBytes ?? PARSE_CACHE_MAX_SOURCE_BYTES,
+    // A parse that leaves the cache (evicted, deleted, cleared) gives up its tree.
+    dispose: (_doc, hash) => {
+      trees.delete(hash);
+    },
   });
+  /** A cache hit: the parse, its tree kept as recently used. */
+  const hit = (hash: string): ParsedDoc | undefined => {
+    const doc = cache.get(hash);
+    if (doc !== undefined) trees.get(hash);
+    return doc;
+  };
   // The thrown value, boxed so that any value (even `undefined`) can be stored.
   const failures = new LRUCache<string, { readonly thrown: unknown }>({
     max: PARSE_CACHE_MAX_FAILURES,
   });
   const insert = (hash: string, src: string, doc: ParsedDoc): void => {
     for (const node of doc.nodes) if ("blockId" in node) deepFreeze(node.attrs);
-    cache.set(hash, doc, { size: Math.max(1, src.length) });
+    const size = Math.max(1, src.length);
+    cache.set(hash, doc, { size });
+    // A source over the whole tree budget is not admitted, so release its tree here.
+    if (cache.has(hash)) trees.set(hash, doc, { size });
+    if (!trees.has(hash)) releaseMdast(doc);
   };
   return {
     parse(src) {
       const hash = docVersion(src);
-      let doc = cache.get(hash);
+      let doc = hit(hash);
       if (doc === undefined) {
         const failed = failures.get(hash);
         if (failed !== undefined) throw failed.thrown;
@@ -115,12 +161,12 @@ export function createParseCache(
     },
     peek(src) {
       const hash = docVersion(src);
-      const doc = cache.get(hash);
+      const doc = hit(hash);
       return doc === undefined ? undefined : { doc, hash };
     },
     seed(src, doc, hash = docVersion(src)) {
       failures.delete(hash);
-      if (cache.get(hash) === undefined) insert(hash, src, doc);
+      if (hit(hash) === undefined) insert(hash, src, doc);
       return hash;
     },
     delete(hash) {
@@ -136,6 +182,9 @@ export function createParseCache(
     },
     get sourceBytes() {
       return cache.calculatedSize;
+    },
+    get treeSourceBytes() {
+      return trees.calculatedSize;
     },
   };
 }

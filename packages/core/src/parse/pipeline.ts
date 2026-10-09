@@ -45,6 +45,43 @@ export function parseFailedDiagnostic(docId: string, err: unknown): Diagnostic {
   );
 }
 
+/** The mdast each parse was built from, with the source it was parsed from. */
+const treeOfDoc = new WeakMap<ParsedDoc, { readonly src: string; readonly tree: Root }>();
+
+/**
+ * The mdast tree `doc` was built from, for a projector that renders markdown
+ * structure: reading it costs no parse. {@link parseDoc} keeps each parse's
+ * tree for as long as its `ParsedDoc` lives, except in an engine, whose parse
+ * cache keeps the trees of only its most recently used parses (see
+ * `docs/guides/projections.md`); a released tree reads as `undefined`.
+ *
+ * The tree is shared by every reader and is not frozen: copy any node you
+ * change. Positions are offsets into `src`.
+ * @param doc A parse made by the engine or by `parseDoc`.
+ * @param src The source `doc` was parsed from. A different source gives
+ *   `undefined`, so a tree is never paired with text it was not parsed from.
+ * @returns The tree, or `undefined` when it is not kept (released, or a
+ *   `ParsedDoc` not made by the parser) or `src` is not its source.
+ * @example
+ * ```ts
+ * const tree = mdastOf(node.doc, node.src) ?? myParse(node.src);
+ * ```
+ */
+export function mdastOf(doc: ParsedDoc, src: string): Root | undefined {
+  const kept = treeOfDoc.get(doc);
+  return kept !== undefined && kept.src === src ? kept.tree : undefined;
+}
+
+/**
+ * Stop keeping the mdast tree of `doc`, so it can be garbage-collected while
+ * the parse itself is still held. {@link mdastOf} then returns `undefined`
+ * for it. The engine's parse cache calls this for parses past its tree budget.
+ * @param doc A parse.
+ */
+export function releaseMdast(doc: ParsedDoc): void {
+  treeOfDoc.delete(doc);
+}
+
 /**
  * Parse one document into a ParsedDoc. Content errors are reported as
  * diagnostics and never thrown (fail-soft); only programming errors throw.
@@ -56,6 +93,9 @@ export function parseFailedDiagnostic(docId: string, err: unknown): Diagnostic {
  * @param src The raw markdown source text to parse.
  * @param options Parse options; `blockTypes` selects which fences become typed blocks.
  * @returns The parsed document: frontmatter, sections/blocks, refs, spans, and diagnostics.
+ *   Its mdast tree is kept with it ({@link mdastOf}): about 10 to 14 times
+ *   the source in memory, for as long as the `ParsedDoc` is reachable, unless
+ *   {@link releaseMdast} drops it first.
  */
 export function parseDoc(src: string, options: ParseOptions = {}): ParsedDoc {
   const blockTypes = options.blockTypes ?? new Set<string>();
@@ -122,7 +162,7 @@ export function parseDoc(src: string, options: ParseOptions = {}): ParsedDoc {
     ...(span.position !== undefined ? { position: span.position } : {}),
   }));
 
-  return {
+  const doc: ParsedDoc = {
     frontmatter,
     ...(frontmatterSpan !== undefined ? { frontmatterSpan } : {}),
     nodes: [...sections, ...blocks],
@@ -130,4 +170,6 @@ export function parseDoc(src: string, options: ParseOptions = {}): ParsedDoc {
     refSpans: hits.map((h) => ({ start: h.offset, end: h.endOffset, ref: h.ref })),
     diagnostics,
   };
+  treeOfDoc.set(doc, { src, tree });
+  return doc;
 }

@@ -335,6 +335,35 @@ describe("walkProjection", () => {
   });
 });
 
+describe("walkProjection: hole spans", () => {
+  it("hands every hole handler the hole's span in the node's source", async () => {
+    const src = "a {{source:cash}} b {{source:gone}}\n\n```note\nid: n\ntext: n\n```\n";
+    const spans: string[] = [];
+    const slice = (span: { start: number; end: number } | undefined): string =>
+      span === undefined ? "none" : src.slice(span.start, span.end);
+    await walkDoc(
+      src,
+      {
+        ...marking,
+        onSource: (value, _ref, _ctx, span) => {
+          spans.push(`source:${slice(span)}`);
+          return value;
+        },
+        onUnresolvedSource: (_ref, _state, raw, _ctx, span) => {
+          spans.push(`unresolved:${slice(span)}`);
+          return raw;
+        },
+        onBlock: ({ raw }, _ctx, span) => {
+          spans.push(`block:${slice(span) === raw}`);
+          return raw;
+        },
+      },
+      { blockTypes: new Map([["note", noteType]]) },
+    );
+    expect(spans).toEqual(["source:{{source:cash}}", "unresolved:{{source:gone}}", "block:true"]);
+  });
+});
+
 describe("walkProjectionParts", () => {
   it("returns pieces of the projector's own type, in document order", async () => {
     type Piece = { readonly kind: string; readonly text: string };

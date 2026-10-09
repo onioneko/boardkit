@@ -192,9 +192,10 @@ export interface ProjectionWalkHandlers<T = string> {
    * @param value The resolved value text.
    * @param ref The reference as parsed (source id and params).
    * @param ctx The node being walked.
+   * @param span The reference's span in `ctx.node.src`, `{{` to `}}`.
    * @returns What to emit in the reference's place.
    */
-  onSource(value: string, ref: SourceRef, ctx: ProjectionWalkContext): T;
+  onSource(value: string, ref: SourceRef, ctx: ProjectionWalkContext, span?: SourceSpan): T;
   /**
    * A `{{source:…}}` span whose value is stale or did not resolve at all.
    * Optional: when omitted, such a span stays verbatim prose (part of the
@@ -214,6 +215,7 @@ export interface ProjectionWalkHandlers<T = string> {
    *   entry for this ref.
    * @param raw The reference's verbatim source, `{{` to `}}`.
    * @param ctx The node being walked.
+   * @param span The reference's span in `ctx.node.src`, `{{` to `}}`.
    * @returns What to emit in the reference's place; `raw` reproduces the
    *   output a walk without this handler gives.
    * @example
@@ -227,23 +229,26 @@ export interface ProjectionWalkHandlers<T = string> {
     state: { readonly value?: string; readonly stale: boolean },
     raw: string,
     ctx: ProjectionWalkContext,
+    span?: SourceSpan,
   ): T;
   /**
    * A typed block, with its hook already dispatched.
    * @param block The block, whether it had a hook, that hook's output, and its
    *   verbatim source.
    * @param ctx The node being walked.
+   * @param span The block's span in `ctx.node.src`, its opening fence to its closing one.
    * @returns What to emit in the block's place.
    */
-  onBlock(block: ProjectionWalkBlock, ctx: ProjectionWalkContext): T;
+  onBlock(block: ProjectionWalkBlock, ctx: ProjectionWalkContext, span?: SourceSpan): T;
   /**
    * An expanded `{{include:…}}` edge. `include.node` is the merged child (with
    * its own provenance and heading); walk it to project it.
    * @param include The include's span in this node's source and its child node.
    * @param ctx The node being walked (the parent).
+   * @param span The include reference's span in `ctx.node.src` (`include.span`).
    * @returns What to emit in the include's place.
    */
-  onInclude(include: MergedInclude, ctx: ProjectionWalkContext): T;
+  onInclude(include: MergedInclude, ctx: ProjectionWalkContext, span?: SourceSpan): T;
 }
 
 /** What to walk, and how. */
@@ -637,17 +642,20 @@ export function walkProjectionParts<T>(
       if (rewrite.start < range.start || rewrite.end > range.end) continue; // not in this range
       if (rewrite.start < cursor) continue; // defensive: skip overlapping rewrites
       pushProse(cursor, rewrite.start);
+      // Every hole handler also gets the hole's span, for a projector that
+      // places its output by source offset rather than by output order.
+      const span: SourceSpan = { start: rewrite.start, end: rewrite.end };
       if ("include" in rewrite) {
-        parts.push(handlers.onInclude(rewrite.include, ctx));
+        parts.push(handlers.onInclude(rewrite.include, ctx, span));
       } else if ("unresolved" in rewrite) {
         const raw = src.slice(rewrite.start, rewrite.end);
         // Defined: an unresolved rewrite is planned only when the handler is.
         const onUnresolved = handlers.onUnresolvedSource as NonNullable<
           ProjectionWalkHandlers<T>["onUnresolvedSource"]
         >;
-        parts.push(onUnresolved.call(handlers, rewrite.ref, rewrite.unresolved, raw, ctx));
+        parts.push(onUnresolved.call(handlers, rewrite.ref, rewrite.unresolved, raw, ctx, span));
       } else if ("ref" in rewrite) {
-        parts.push(handlers.onSource(rewrite.value, rewrite.ref, ctx));
+        parts.push(handlers.onSource(rewrite.value, rewrite.ref, ctx, span));
       } else {
         const { block } = rewrite;
         const hook = blockTypes?.get(block.type)?.project?.[projectorId];
@@ -668,7 +676,7 @@ export function walkProjectionParts<T>(
           );
           piece = { block, hooked: true, output: undefined, raw, hookError };
         }
-        parts.push(handlers.onBlock(piece, ctx));
+        parts.push(handlers.onBlock(piece, ctx, span));
       }
       cursor = rewrite.end;
     }

@@ -39,7 +39,7 @@ export { documentComplexityDiagnostic, fencedCodeLines } from "../parse/complexi
 // ---------------------------------------------------------------------------
 // Parse machinery
 // ---------------------------------------------------------------------------
-export { parseDoc, parseFailedDiagnostic } from "../parse/pipeline.js";
+export { parseDoc, parseFailedDiagnostic, releaseMdast } from "../parse/pipeline.js";
 export type { RefHit } from "../parse/refs.js";
 export { extractRefs } from "../parse/refs.js";
 export type { SectionSpan } from "../parse/sections.js";
