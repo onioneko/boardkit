@@ -23,6 +23,9 @@ of nested containers): the markdown parser then throws a <code>RangeError</code>
 engine screens such input out first (<code>EngineOptions.complexityLimits</code>) and
 turns a throw that still happens into an <code>E_PARSE_FAILED</code> diagnostic
 (<a href="Internal_API.parseFailedDiagnostic.html" class="tsd-kind-function">parseFailedDiagnostic</a>).</p>
+<p>Called with an options object bound to a chunk cache (<code>bindChunkCache</code>), as
+the engine's own is, it re-parses only the sections that changed since a
+source whose chunks are cached; the result is the same.</p>
 </div>
 <div class="tsd-parameters">
 <h4 class="tsd-parameters-title">Parameters</h4>
@@ -40,7 +43,7 @@ about 330 to 370 bytes per mdast node, which is about 3 to 6 times the
 source for plain prose and over 100 times it for lists and tables.</p>
 <aside class="tsd-sources">
 <ul>
-<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/parse/pipeline.ts#L162">packages/core/src/parse/pipeline.ts:162</a></li></ul></aside></div></li></ul></section></div>
+<li>Defined in <a href="https://github.com/onioneko/boardkit/blob/main/packages/core/src/parse/pipeline.ts#L178">packages/core/src/parse/pipeline.ts:178</a></li></ul></aside></div></li></ul></section></div>
 <div class="col-sidebar">
 <div class="page-menu">
 <div class="tsd-navigation settings">
