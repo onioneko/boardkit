@@ -1,6 +1,6 @@
 {
   "name": "@onioneko/boardkit-html",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "The html projector for BoardKit: renders a document to sanitized HTML with live values, typed blocks and expanded includes.",
   "keywords": [
     "markdown",
