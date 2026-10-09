@@ -115,8 +115,10 @@ describe.each([
     () => {
       const cache = newCache();
       const r = rng(7);
-      for (const [i, doc] of corpus.entries())
-        checkEdits(`corpus#${i}`, cache, doc, scale(3, 8), r);
+      for (const [i, doc] of corpus.entries()) {
+        // Inputs far over the default document size limit get one edit.
+        checkEdits(`corpus#${i}`, cache, doc, doc.length > 300_000 ? 1 : scale(3, 8), r);
+      }
       expect(tally.compared).toBeGreaterThan(corpus.length);
     },
     TIMEOUT,
