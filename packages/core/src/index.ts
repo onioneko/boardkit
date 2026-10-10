@@ -25,6 +25,15 @@ export type {
   ProjectionHook,
   StateTransition,
 } from "./blocks/types.js";
+export type { FindTextOptions, FindTextResult, Located, TextHit } from "./engine/doc-query.js";
+export {
+  findText,
+  locateOffset,
+  MAX_FIND_HITS,
+  MAX_QUERY_BYTES,
+  MAX_QUERY_GRAPHEMES,
+  MAX_QUERY_WINDOW,
+} from "./engine/doc-query.js";
 // ---------------------------------------------------------------------------
 // Projection
 // ---------------------------------------------------------------------------

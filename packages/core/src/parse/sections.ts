@@ -62,6 +62,8 @@ export interface SectionSpan {
   /** Offset where the section's own content begins (heading line end). */
   readonly startOffset: number;
   readonly endOffset: number;
+  /** `true` when the id is a literal `{#anchor}` rather than the heading's slug. */
+  readonly anchored?: true;
   readonly content: string;
   /**
    * Exclusive source ranges (deepest-section ownership) whose slices
@@ -142,6 +144,7 @@ export function extractSections(root: Root, src: string, slugger: GithubSlugger)
     position?: SourcePosition;
     headingStart: number;
     startOffset: number;
+    anchored?: true;
   }[] = [];
 
   const closeSection = (endOffset: number, stopLevel: number): void => {
@@ -176,6 +179,7 @@ export function extractSections(root: Root, src: string, slugger: GithubSlugger)
       position: { line: pos.start.line, col: pos.start.column },
       headingStart,
       startOffset: contentStart,
+      ...(anchor !== undefined ? { anchored: true as const } : {}),
     });
   }
   closeSection(src.length, 1);

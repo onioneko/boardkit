@@ -1,5 +1,5 @@
 import type { Diagnostic } from "../model/diagnostic.js";
-import type { ParsedDoc } from "../model/doc.js";
+import type { ParsedDoc, SourcePosition, SourceSpan } from "../model/doc.js";
 import type { BlockId, DocId, SectionId } from "../model/ids.js";
 
 /**
@@ -48,6 +48,21 @@ export interface DocInfo {
     readonly heading: string;
     /** The heading depth, 1–6. */
     readonly level: 1 | 2 | 3 | 4 | 5 | 6;
+    /**
+     * The section's whole extent in the source as given (a BOM counts):
+     * from the start of its heading to where the section closes, subsections
+     * included.
+     */
+    readonly span: SourceSpan;
+    /** The index in `sections` of the nearest enclosing section, or `null` for a top-level one. */
+    readonly parent: number | null;
+    /** The 1-based position of the heading line. */
+    readonly position?: SourcePosition;
+    /**
+     * `true` when {@link sectionId} is a literal `{#anchor}`; absent when it is
+     * the heading's slug (which changes with the heading text).
+     */
+    readonly anchored?: true;
   }[];
   /** The document's typed blocks, in document order. */
   readonly blocks: readonly {
@@ -55,7 +70,13 @@ export interface DocInfo {
     readonly blockId: BlockId;
     /** The block's registered type name. */
     readonly type: string;
+    /** The extent of the whole fenced block in the source as given. */
+    readonly span?: SourceSpan;
+    /** The 1-based position of the opening fence. */
+    readonly position?: SourcePosition;
   }[];
+  /** The extent of the YAML frontmatter (delimiters included) in the source as given; absent without one. */
+  readonly frontmatterSpan?: SourceSpan;
   /** The parse's diagnostics (bad frontmatter, refs or blocks); empty for a clean parse. */
   readonly diagnostics: readonly Diagnostic[];
 }
@@ -74,15 +95,40 @@ const PREAMBLE_ID = "__preamble__";
  * @returns The summary.
  */
 export function summarizeDoc(docId: DocId, version: string, parsed: ParsedDoc): DocInfo {
-  const sections: { sectionId: SectionId; heading: string; level: 1 | 2 | 3 | 4 | 5 | 6 }[] = [];
-  const blocks: { blockId: BlockId; type: string }[] = [];
+  const sections: DocInfo["sections"][number][] = [];
+  const blocks: DocInfo["blocks"][number][] = [];
+  // Indexes in `sections` of the sections open at the current heading.
+  const open: number[] = [];
   for (const node of parsed.nodes) {
     if ("blockId" in node) {
-      blocks.push({ blockId: node.blockId, type: node.type });
+      blocks.push({
+        blockId: node.blockId,
+        type: node.type,
+        ...(node.span !== undefined ? { span: { ...node.span } } : {}),
+        ...(node.position !== undefined ? { position: { ...node.position } } : {}),
+      });
     } else if (!(node.sectionId === PREAMBLE_ID && node.position === undefined)) {
       // The preamble is the one section without a heading position; a heading
       // anchored `{#__preamble__}` has a position and stays a heading.
-      sections.push({ sectionId: node.sectionId, heading: node.heading, level: node.level });
+      // Sections nest strictly, so the parent is the nearest open section that
+      // still holds this one.
+      const span = node.span === undefined ? { start: 0, end: 0 } : { ...node.span };
+      while (open.length > 0) {
+        const top = sections[open[open.length - 1] as number]?.span;
+        if (top !== undefined && span.start >= top.start && span.end <= top.end) break;
+        open.pop();
+      }
+      const parent = open.length > 0 ? (open[open.length - 1] as number) : null;
+      open.push(sections.length);
+      sections.push({
+        sectionId: node.sectionId,
+        heading: node.heading,
+        level: node.level,
+        span,
+        parent,
+        ...(node.position !== undefined ? { position: { ...node.position } } : {}),
+        ...(node.anchored === true ? { anchored: true as const } : {}),
+      });
     }
   }
   const frontmatter = structuredClone(parsed.frontmatter);
@@ -94,6 +140,9 @@ export function summarizeDoc(docId: DocId, version: string, parsed: ParsedDoc): 
     frontmatter,
     sections,
     blocks,
+    ...(parsed.frontmatterSpan !== undefined
+      ? { frontmatterSpan: { ...parsed.frontmatterSpan } }
+      : {}),
     diagnostics: parsed.diagnostics.map((d) => structuredClone(d)),
   };
 }

@@ -49,6 +49,20 @@ export interface Section {
    * slice an included section without re-parsing.
    */
   readonly contentSpans?: readonly SourceSpan[];
+  /**
+   * The section's whole extent in the source: from the start of its heading
+   * (where the previous section ends) to where the section closes, nested
+   * sections included. For `__preamble__` it is the content range. The parser
+   * sets it on every section it produces; it is optional only so that
+   * hand-built documents type-check.
+   */
+  readonly span?: SourceSpan;
+  /**
+   * `true` when the id comes from a literal `{#anchor}` in the heading rather
+   * than from the heading's slug. A slug id changes with the heading text and
+   * its `-N` suffix with document order; an anchored id does neither.
+   */
+  readonly anchored?: true;
 }
 
 /** A typed, stateful document component (fenced block). */
