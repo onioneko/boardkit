@@ -122,6 +122,20 @@ describe("projection from the parsed tree: parsing", () => {
     expect(released).toBe(kept);
   });
 
+  it("projects a document that starts with a BOM like the same document without it, tree kept or released", async () => {
+    const body = `${["# A {#a}", "{{source:cash}} one", "## B", "two {{source:cash}}"].join("\n\n")}\n`;
+    const plainDoc = parseDoc(body);
+    const plain = await projectHtml(plainDoc, body, cash(plainDoc));
+    expect(plain).toContain("¥100 one");
+    expect(plain).not.toContain("{#a}");
+
+    const src = `\uFEFF${body}`;
+    const doc = parseDoc(src);
+    expect(await projectHtml(doc, src, cash(doc))).toBe(plain);
+    releaseMdast(doc);
+    expect(await projectHtml(doc, src, cash(doc))).toBe(plain);
+  });
+
   it("parses an included document whose tree was released once, however many slices it gives", async () => {
     const docs = new Map([
       ["board", "{{include:n#a}}\n\n{{include:n#b}}\n\n{{include:n}}\n"],

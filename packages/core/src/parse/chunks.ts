@@ -274,15 +274,11 @@ function htmlOpen(raw: string, text: string, end: number): boolean {
 
 /** Does the chunk end in a leaf block, at any depth, that a following heading line could change? */
 function endsOpen(root: Root, text: string): boolean {
-  // Offsets do not count a byte order mark.
-  const bom = text.charCodeAt(0) === BOM ? 1 : 0;
   let node: Nodes | undefined = root.children.at(-1);
   while (node !== undefined) {
-    const startOffset = node.position?.start.offset;
-    const endOffset = node.position?.end.offset;
-    if (startOffset === undefined || endOffset === undefined) return true;
-    const start = startOffset + bom;
-    const end = endOffset + bom;
+    const start = node.position?.start.offset;
+    const end = node.position?.end.offset;
+    if (start === undefined || end === undefined) return true;
     if (node.type === "code" && fenceOpen(node, text.slice(start, end))) return true;
     if (node.type === "html" && htmlOpen(text.slice(start, end), text, end)) return true;
     // A table runs to a blank line (conservative: whether a heading ends it is not relied on).
@@ -500,10 +496,9 @@ export function createChunkCache(limits: ChunkCacheOptions): ChunkCache {
     const children: RootContent[] = [];
     let lines = 0;
     for (const part of parts) {
-      // Offsets do not count a byte order mark.
-      const offset = part.start === 0 ? 0 : part.start - bom;
+      // A chunk's offsets count from its own start, a leading BOM included.
       for (const child of (part.chunk.root as Root).children) {
-        children.push(moved(child, offset, lines));
+        children.push(moved(child, part.start, lines));
       }
       if (part !== parts[parts.length - 1]) lines += part.chunk.lineEndings;
     }
@@ -513,7 +508,7 @@ export function createChunkCache(limits: ChunkCacheOptions): ChunkCache {
     if (end !== undefined) {
       root.position = {
         start: { line: 1, column: 1, offset: 0 },
-        end: movePoint(end, tail.start - bom, lines),
+        end: movePoint(end, tail.start, lines),
       };
     }
     last = { chunks: parts.length, parsed, parsedChars, reused, merges };

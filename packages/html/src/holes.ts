@@ -14,7 +14,7 @@ import {
   walkProjectionParts,
 } from "@onioneko/boardkit-core";
 import type { Element, ElementContent, Root, RootContent } from "hast";
-import type { Root as MdRoot } from "mdast";
+import type { Nodes as MdNodes, Root as MdRoot } from "mdast";
 import remarkFrontmatter from "remark-frontmatter";
 import remarkGfm from "remark-gfm";
 import remarkParse from "remark-parse";
@@ -185,9 +185,30 @@ function documentTree(walk: ProjectionWalkOptions): DeepReadonly<MdRoot> {
   }
   const memo = byDoc?.get(doc);
   if (memo !== undefined && memo.src === src) return memo.tree;
-  const tree = toMdast.parse(src) as DeepReadonly<MdRoot>;
+  const tree = withSourceOffsets(toMdast.parse(src) as MdRoot, src) as DeepReadonly<MdRoot>;
   byDoc?.set(doc, { src, tree });
   return tree;
+}
+
+/**
+ * The tree with every offset an index into `src` as given, as the core parser
+ * gives it: the markdown parser counts offsets after a leading byte order mark
+ * (U+FEFF), so on such a source they move on by one (the root's start stays).
+ */
+function withSourceOffsets(root: MdRoot, src: string): MdRoot {
+  type Point = NonNullable<MdRoot["position"]>["start"];
+  if (src.charCodeAt(0) !== 0xfeff) return root;
+  const next = (p: Point): Point => (p.offset === undefined ? p : { ...p, offset: p.offset + 1 });
+  if (root.position !== undefined) {
+    root.position = { start: root.position.start, end: next(root.position.end) };
+  }
+  const stack: MdNodes[] = [...root.children];
+  for (let node = stack.pop(); node !== undefined; node = stack.pop()) {
+    const at = node.position;
+    if (at !== undefined) node.position = { start: next(at.start), end: next(at.end) };
+    if ("children" in node) for (const child of node.children) stack.push(child as MdNodes);
+  }
+  return root;
 }
 
 /** One hole, with the content its handler gave it. */
