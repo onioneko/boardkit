@@ -148,7 +148,8 @@ export function extractRefs(
   const hits: RefHit[] = [];
   const diagnostics: Diagnostic[] = [];
 
-  const lineStarts: number[] = [0];
+  // A leading byte order mark takes no column, as in the parser's positions.
+  const lineStarts: number[] = [src.charCodeAt(0) === 0xfeff ? 1 : 0];
   for (let i = 0; i < src.length; i += 1) {
     if (src[i] === "\n") lineStarts.push(i + 1);
   }
