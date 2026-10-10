@@ -68,17 +68,48 @@ describe("docInfo (#16)", () => {
     ].join("\n");
     const engine = await setup({ fin: src });
     const info = await engine.docInfo("fin");
-    expect(info).toMatchObject({
+    const at = (needle: string): number => src.indexOf(needle);
+    expect(info).toEqual({
       docId: "fin",
       version: docVersion(src),
       title: "Family Finance",
       frontmatter: { stability: "volatile", tags: ["a", "b"] },
       sections: [
-        { sectionId: "family-finance", heading: "Family Finance", level: 1 },
-        { sectionId: "now", heading: "Now", level: 2 },
-        { sectionId: "detail", heading: "Detail", level: 3 },
+        {
+          sectionId: "family-finance",
+          heading: "Family Finance",
+          level: 1,
+          span: { start: at("# Family Finance"), end: src.length },
+          parent: null,
+          position: { line: 8, col: 1 },
+        },
+        {
+          sectionId: "now",
+          heading: "Now",
+          level: 2,
+          span: { start: at("## Now"), end: src.length },
+          parent: 0,
+          position: { line: 10, col: 1 },
+          anchored: true,
+        },
+        {
+          sectionId: "detail",
+          heading: "Detail",
+          level: 3,
+          span: { start: at("### Detail"), end: src.length },
+          parent: 1,
+          position: { line: 17, col: 1 },
+        },
       ],
-      blocks: [{ blockId: "s", type: "status" }],
+      blocks: [
+        {
+          blockId: "s",
+          type: "status",
+          span: { start: at("```status"), end: at("```\n\n### Detail") + 3 },
+          position: { line: 12, col: 1 },
+        },
+      ],
+      frontmatterSpan: { start: 0, end: at("---\n\nIntro") + 3 },
       diagnostics: [],
     });
   });

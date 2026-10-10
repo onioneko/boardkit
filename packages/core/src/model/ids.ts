@@ -1,12 +1,6 @@
 import type { Diagnostic } from "./diagnostic.js";
 import { diagnostic } from "./diagnostic.js";
 
-/**
- * The longest id, in UTF-16 code units, a host should send or show for a
- * section or block id. Hosts that bound ids share this number.
- */
-export const MAX_ID_LENGTH = 256;
-
 /** Document identifier: workspace-relative path without extension (e.g. `research/q3-review`). */
 export type DocId = string & { readonly __brand: "DocId" };
 

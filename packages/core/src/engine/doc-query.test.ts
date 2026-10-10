@@ -5,7 +5,7 @@ import { createChunkCache } from "../parse/chunks.js";
 import type { ParseOptions } from "../parse/options.js";
 import { bindChunkCache, parseDoc } from "../parse/pipeline.js";
 import { type DocInfo, summarizeDoc } from "./doc-info.js";
-import { findText, locateOffset, MAX_FIND_HITS, MAX_QUERY_BYTES } from "./doc-query.js";
+import { findText, locateOffset, MAX_FIND_HITS } from "./doc-query.js";
 
 const BOM = "﻿";
 const options: ParseOptions = { blockTypes: new Set(["status"]) };
@@ -240,20 +240,20 @@ describe("findText", () => {
     expect(findText("# T\n\nw w\n", infoOf("# T\n\nw w\n"), "w", { limit: 2 }).more).toBe(false);
   });
 
-  it("bounds the query: a window, then graphemes, then bytes", () => {
-    const long = "a".repeat(5000);
-    const src = `# T\n\n${long}\n`;
-    const hit = find(src, long).hits[0];
-    expect(hit && hit.end - hit.start).toBeLessThanOrEqual(1024);
-    const wide = "界".repeat(600);
-    const src2 = `# T\n\n${wide}\n`;
-    const h2 = find(src2, wide).hits[0];
-    expect(h2).toBeDefined();
-    expect(((h2?.end ?? 0) - (h2?.start ?? 0)) * 3).toBeLessThanOrEqual(MAX_QUERY_BYTES);
-    const emoji = "👍🏽".repeat(300);
-    const h3 = find(`# T\n\n${emoji}\n`, emoji).hits[0];
-    expect(h3).toBeDefined();
-    expect((h3?.end ?? 0) - (h3?.start ?? 0)).toBeLessThanOrEqual(256 * 4);
+  it("does not search a query over the bounds, and says so", () => {
+    const check = (q: string, text: string): void => {
+      const src = `# T\n\n${text}\n`;
+      expect(find(src, q)).toEqual({ hits: [], more: false, truncated: true });
+    };
+    check("a".repeat(5000), "a".repeat(5000));
+    check("界".repeat(600), "界".repeat(600));
+    check("👍🏽".repeat(250), "👍🏽".repeat(250));
+    // The shortened prefix would match, the asked query does not.
+    check(`${"a ".repeat(255)}b`, "a ".repeat(300));
+    const ok = find(`# T\n\n${"界".repeat(250)}\n`, "界".repeat(250));
+    expect(ok.truncated).toBe(false);
+    expect(ok.hits).toHaveLength(1);
+    expect(find("# T\n\nx\n", "x").truncated).toBe(false);
   });
 
   it("positions agree with line breaks of every kind", () => {
@@ -262,35 +262,46 @@ describe("findText", () => {
   });
 });
 
-describe("findText cost on a 256 KiB document", () => {
-  /** CPU time of the best of three runs. */
+describe("findText cost on a 256 KiB document", { timeout: 60_000 }, () => {
+  /** CPU milliseconds per call: enough calls for a sample of at least 30 ms, best of five samples. */
   function cpu(fn: () => void): number {
+    const ms = (t: NodeJS.CpuUsage): number => (t.user + t.system) / 1000;
+    let reps = 1;
+    for (;;) {
+      const t = process.cpuUsage();
+      for (let rep = 0; rep < reps; rep += 1) fn();
+      if (ms(process.cpuUsage(t)) >= 30 || reps >= 4096) break;
+      reps *= 2;
+    }
     let best = Number.POSITIVE_INFINITY;
     for (let i = 0; i < 5; i += 1) {
       const t = process.cpuUsage();
-      for (let rep = 0; rep < 5; rep += 1) fn();
-      const d = process.cpuUsage(t);
-      best = Math.min(best, d.user + d.system);
+      for (let rep = 0; rep < reps; rep += 1) fn();
+      best = Math.min(best, ms(process.cpuUsage(t)) / reps);
     }
     return best;
   }
 
-  /** Fake the section index so only the search is timed, not the parse. */
-  function ratio(make: (n: number) => { src: string; query: string }): number {
-    const run = (n: number): number => {
-      const { src, query } = make(n);
+  /**
+   * The median of five doubling ratios (CPU at 2n over CPU at n). Noise in
+   * either term moves a ratio both ways, so the median is the signal; a
+   * quadratic search gives 4 or more, a linear one about 2.
+   */
+  function ratio(make: (n: number) => { src: string; query: string }, n = 64 * 1024): number {
+    const prepare = (size: number): (() => number) => {
+      const { src, query } = make(size);
       const info = infoOf(src);
-      return cpu(() => {
-        findText(src, info, query, { limit: 25 });
-      });
+      return () =>
+        cpu(() => {
+          findText(src, info, query, { limit: 25 });
+        });
     };
-    run(16 * 1024);
-    // Timing noise only ever inflates a ratio: the best of three is the signal.
-    let best = Number.POSITIVE_INFINITY;
-    for (let attempt = 0; attempt < 3 && best > 2.5; attempt += 1) {
-      best = Math.min(best, run(128 * 1024) / Math.max(run(64 * 1024), 1));
-    }
-    return best;
+    const small = prepare(n);
+    const large = prepare(2 * n);
+    small();
+    const ratios = Array.from({ length: 5 }, () => large() / Math.max(small(), 0.001));
+    ratios.sort((x, y) => x - y);
+    return ratios[2] as number;
   }
 
   it("scales at most linearly (doubling ratio) on an all-a document", () => {
@@ -310,6 +321,20 @@ describe("findText cost on a 256 KiB document", () => {
     expect(
       ratio((n) => ({ src: `# T\n\nab${" ".repeat(n)}ab\n`, query: "ab  ab ab" })),
     ).toBeLessThanOrEqual(2.5);
+  });
+
+  it("trims the query's outer whitespace, so it stays linear over a long run of spaces", () => {
+    // Without the trim the pattern starts with \s+, which is quadratic on a run of spaces.
+    for (const query of [" zz", "zz ", "  zz  "]) {
+      expect(
+        ratio((n) => ({ src: `# T\n\n${" ".repeat(n)}\n`, query }), 8 * 1024),
+      ).toBeLessThanOrEqual(2.5);
+    }
+    const src = "# T\n\nfoo bar foo\n";
+    const info = infoOf(src);
+    expect(findText(src, info, "  foo ", { limit: 5 })).toEqual(
+      findText(src, info, "foo", { limit: 5 }),
+    );
   });
 
   it("scales at most linearly on many headings and a frequent word", () => {

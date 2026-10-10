@@ -100,7 +100,7 @@ export type { BlockId, DocId, SectionId } from "./model/ids.js";
 // ---------------------------------------------------------------------------
 // Model / data
 // ---------------------------------------------------------------------------
-export { asBlockId, asDocId, asSectionId, MAX_ID_LENGTH } from "./model/ids.js";
+export { asBlockId, asDocId, asSectionId } from "./model/ids.js";
 export type { IncludeRef, InlineRef, SourceRef } from "./model/refs.js";
 // Markdown complexity limits (EngineOptions.complexityLimits)
 export type { ComplexityLimits } from "./parse/complexity.js";

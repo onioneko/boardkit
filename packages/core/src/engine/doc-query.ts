@@ -45,6 +45,12 @@ export interface FindTextResult {
   readonly hits: readonly TextHit[];
   /** `true` when there is at least one more match after the last hit. */
   readonly more: boolean;
+  /**
+   * `true` when the query was over the bounds (window, graphemes or bytes).
+   * Such a query is not searched: `hits` is empty, so a match for a shortened
+   * query is never reported as a match for the one asked.
+   */
+  readonly truncated: boolean;
 }
 
 /** Sections nest at most six heading levels deep. */
@@ -96,7 +102,7 @@ function blockAt(blocks: DocInfo["blocks"], offset: number): number | null {
 const encoder = new TextEncoder();
 
 /** The query, bounded: a fixed window first, then NFC, then at most the grapheme and byte caps. */
-function boundedQuery(query: string): string {
+function boundedQuery(query: string): { text: string; truncated: boolean } {
   let cut = query.slice(0, MAX_QUERY_WINDOW);
   const last = cut.charCodeAt(cut.length - 1);
   if (cut.length < query.length && last >= 0xd800 && last <= 0xdbff) cut = cut.slice(0, -1);
@@ -104,16 +110,20 @@ function boundedQuery(query: string): string {
   let kept = "";
   let graphemes = 0;
   let bytes = 0;
+  let truncated = cut.length < query.length;
   for (const { segment } of new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(
     text,
   )) {
     const size = encoder.encode(segment).length;
-    if (graphemes + 1 > MAX_QUERY_GRAPHEMES || bytes + size > MAX_QUERY_BYTES) break;
+    if (graphemes + 1 > MAX_QUERY_GRAPHEMES || bytes + size > MAX_QUERY_BYTES) {
+      truncated = true;
+      break;
+    }
     kept += segment;
     graphemes += 1;
     bytes += size;
   }
-  return kept;
+  return { text: kept, truncated };
 }
 
 function escapeRegExp(text: string): string {
@@ -125,7 +135,8 @@ function escapeRegExp(text: string): string {
  *
  * - The query is literal and bounded (cut to {@link MAX_QUERY_WINDOW} code
  *   units, taken in NFC, then capped at {@link MAX_QUERY_GRAPHEMES} graphemes
- *   and {@link MAX_QUERY_BYTES} bytes). `src` is not normalized, so offsets
+ *   and {@link MAX_QUERY_BYTES} bytes). A query over a bound is not searched:
+ *   the result has no hits and `truncated: true`. `src` is not normalized, so offsets
  *   stay exact. Whitespace around the query is ignored and each run of
  *   whitespace inside it matches any run of whitespace, line breaks included.
  *   An empty or all-whitespace query has no hits.
@@ -150,10 +161,10 @@ export function findText(
   query: string,
   options: FindTextOptions,
 ): FindTextResult {
-  const none = { hits: [], more: false } as const;
-  const tokens = boundedQuery(query)
-    .split(/\s+/u)
-    .filter((t) => t !== "");
+  const bounded = boundedQuery(query);
+  if (bounded.truncated) return { hits: [], more: false, truncated: true };
+  const none = { hits: [], more: false, truncated: false } as const;
+  const tokens = bounded.text.split(/\s+/u).filter((t) => t !== "");
   if (tokens.length === 0) return none;
   const limit = Math.max(1, Math.min(MAX_FIND_HITS, Math.floor(options.limit) || 1));
   const re = new RegExp(
@@ -193,5 +204,5 @@ export function findText(
       ...locateOffset(info, start),
     });
   }
-  return { hits, more };
+  return { hits, more, truncated: false };
 }
