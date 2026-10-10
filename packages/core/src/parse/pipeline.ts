@@ -238,6 +238,8 @@ export function parseDoc(src: string, options: ParseOptions = {}): ParsedDoc {
     content: span.content,
     refs: refsBySpan.get(span.startOffset) ?? [],
     contentSpans: span.contentSpans,
+    span: { start: span.headingStart, end: span.endOffset },
+    ...(span.anchored === true ? { anchored: true as const } : {}),
     ...(span.position !== undefined ? { position: span.position } : {}),
   }));
 

@@ -68,7 +68,7 @@ describe("docInfo (#16)", () => {
     ].join("\n");
     const engine = await setup({ fin: src });
     const info = await engine.docInfo("fin");
-    expect(info).toEqual({
+    expect(info).toMatchObject({
       docId: "fin",
       version: docVersion(src),
       title: "Family Finance",
@@ -169,7 +169,7 @@ describe("docInfo (#16)", () => {
     });
     const info = await engine.docInfo("d");
     expect(info?.title).toBe("Rules");
-    expect(info?.sections).toEqual([
+    expect(info?.sections).toMatchObject([
       { sectionId: "rules-top", heading: "Rules", level: 1 },
       { sectionId: "risk-limits", heading: "Risk limits", level: 2 },
       { sectionId: "plain", heading: "Plain", level: 2 },
@@ -231,7 +231,7 @@ describe("docInfo (#16)", () => {
     counts.parses = 0;
     const info = await engine.docInfo("d");
     expect(info?.title).toBe("Written");
-    expect(info?.blocks).toEqual([{ blockId: "s", type: "status" }]);
+    expect(info?.blocks).toMatchObject([{ blockId: "s", type: "status" }]);
     expect(counts.parses).toBe(0);
   });
 
