@@ -1,5 +1,15 @@
 # @onioneko/boardkit-core
 
+## 0.5.0
+
+### Minor Changes
+
+- 97455e1: Hosts that let a reader jump to part of a large document can now ask where things are. `Section.span` is the section's whole extent (heading start to close, subsections included) and `Section.anchored` marks ids that come from a literal `{#anchor}` rather than a slug. `engine.docInfo` gains `sections[].span`, `parent`, `position` and `anchored`, `blocks[].span` and `position`, and `frontmatterSpan`. Two pure functions are new: `findText(src, info, query, { limit, ignoreCase })`, a bounded literal search (query cut to a fixed window, then capped by graphemes and bytes; whitespace runs match any whitespace; a query over the bounds is not searched and reports `truncated`; at most 25 hits, with `more`), and `locateOffset(info, offset)`, which returns the section and block that hold an offset. Every offset is an index into the source as given.
+
+### Patch Changes
+
+- 2b280d1: On a document that starts with a byte order mark (U+FEFF), every public offset (`Block.span`, `Section.contentSpans`, `ParsedDoc.frontmatterSpan`, `RefSpan`) and every offset in the tree `mdastOf` returns is now an index into the source as given, BOM included. Patches on such documents work again and keep the BOM byte-identical, and `{#anchor}` heading ids on them are read (they were ignored). Hosts that shifted these offsets by one themselves should stop doing so.
+
 ## 0.4.0
 
 ### Minor Changes
