@@ -1,5 +1,14 @@
 # boardkit-examples
 
+## 0.0.5
+
+### Patch Changes
+
+- Updated dependencies [0ff8bde]
+  - @onioneko/boardkit-core@0.6.0
+  - @onioneko/boardkit-blocks@0.6.0
+  - @onioneko/boardkit-html@0.6.0
+
 ## 0.0.4
 
 ### Patch Changes
