@@ -41,7 +41,10 @@ export interface AffordanceDecl<A extends Record<string, unknown> = Record<strin
    * attrs delta for the patch pipeline.
    * @param attrs The block's current attrs (read-only).
    * @param params The intent's params (already schema-validated when a schema is declared).
-   * @returns The top-level attrs delta to apply.
+   * @returns The top-level attrs delta to apply. A delta that changes no value
+   *   (`{}`, or only the values the block already has) makes the intent fail
+   *   with reason `no-change`, so a guard can return `{}` to refuse a move the
+   *   block's state does not allow.
    */
   readonly patch: (attrs: Readonly<A>, params: unknown) => Record<string, unknown>;
 }

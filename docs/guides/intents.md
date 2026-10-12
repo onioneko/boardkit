@@ -129,6 +129,27 @@ set `strictExpected: false`:
 `engine.patch` with a concrete `attrs` delta uses the same rules, comparing every key of
 `expected` whole.
 
+## An intent that changes nothing
+
+After the params are validated and the compare-and-set rules above have let the write through,
+the pipeline compares the decoded delta with the block's current attrs. When no value would
+change (the affordance's `patch` returned `{}`, or only values the block already has), the
+intent is refused with reason `no-change` and diagnostic `E_INTENT_NO_CHANGE`, with the block's
+current attrs as `rejection.current`. Nothing is written and no event is emitted, so a host that
+reacts to document changes never hears about a write that changed nothing.
+
+An affordance can therefore act as a guard: returning `{}` when the block is in a state the
+operation does not apply to refuses the intent. The refusal also reaches a sender whose view is
+out of date, which would otherwise get `ok: true` for a move the block no longer allows. Because
+the rule runs after params validation, invalid params are still refused as `validation`.
+
+| Reason | Diagnostic | Meaning |
+|---|---|---|
+| `expected-mismatch` | none | The block changed since the sender's view: the compare-and-set failed. |
+| `no-change` | `E_INTENT_NO_CHANGE` | The compare-and-set passed, but the decoded delta changes no value. |
+
+The rule applies to intents only. `engine.patch` with a delta that changes nothing still commits.
+
 ## Next
 
 - [Blocks](blocks.md) — how `affordances` are declared.

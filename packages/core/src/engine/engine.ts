@@ -455,7 +455,9 @@ export interface Engine {
    * Decode an affordance and apply it as a patch with the intent's guards.
    * @param intent The request (doc, block, affordance, params, guards).
    * @param opts The write's author.
-   * @returns The write result from the patch pipeline.
+   * @returns The write result from the patch pipeline. A decoded delta that
+   *   changes no value is rejected with reason `no-change`
+   *   (`E_INTENT_NO_CHANGE`), and nothing is written or emitted.
    * @example
    * ```ts
    * const result = await engine.applyIntent(

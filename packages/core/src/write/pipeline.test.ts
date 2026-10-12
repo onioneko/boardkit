@@ -725,6 +725,107 @@ describe("patch proposal origin (intent-originated patches)", () => {
   });
 });
 
+describe("intent-originated patch that changes nothing (no-change)", () => {
+  const src = "```status\nid: d\nstates: [pending, approved]\nvalue: pending\n```\n";
+  const origin = { affordance: "transition", params: { to: "approved" } } as const;
+
+  type MemDeps = PipelineDeps & { storage: ReturnType<typeof createMemStorage> };
+
+  /** A fresh `fin` document; `commits` records every commit after the create. */
+  async function setup(): Promise<{ d: MemDeps; commits: unknown[]; eventsBefore: number }> {
+    const commits: unknown[] = [];
+    const d: MemDeps = { ...deps(), onCommit: (c) => commits.push(c) };
+    await createDoc(d, asDocId("fin"), writer, src);
+    commits.length = 0;
+    return { d, commits, eventsBefore: d.storage.getEvents().length };
+  }
+
+  /** Assert a no-change refusal that wrote and emitted nothing. */
+  async function expectNoChange(
+    s: { d: MemDeps; commits: unknown[]; eventsBefore: number },
+    r: WriteResult,
+  ): Promise<void> {
+    expect(rejectionOf(r).reason).toBe("no-change");
+    expect(rejectionOf(r).diagnostics.map((diag) => diag.code)).toEqual(["E_INTENT_NO_CHANGE"]);
+    expect(rejectionOf(r).current).toMatchObject({ id: "d", value: "pending" });
+    expect(await s.d.storage.read(asDocId("fin"))).toBe(src);
+    expect(s.commits).toEqual([]);
+    expect(s.d.storage.getEvents()).toHaveLength(s.eventsBefore);
+  }
+
+  it("refuses a guard that returns {}, writing and emitting nothing", async () => {
+    const s = await setup();
+    const r = await patchDoc(s.d, asDocId("fin"), asBlockId("d"), () => ({}), writer, {}, origin);
+    await expectNoChange(s, r);
+  });
+
+  it("refuses a delta equal to the current values", async () => {
+    const s = await setup();
+    const r = await patchDoc(
+      s.d,
+      asDocId("fin"),
+      asBlockId("d"),
+      () => ({ value: "pending", states: ["pending", "approved"] }),
+      writer,
+      {},
+      { affordance: "transition", params: { to: "pending" } },
+    );
+    await expectNoChange(s, r);
+  });
+
+  it("refuses an empty delta even when a strict expected is stale", async () => {
+    const s = await setup();
+    const r = await patchDoc(
+      s.d,
+      asDocId("fin"),
+      asBlockId("d"),
+      () => ({}),
+      writer,
+      { expectedVersion: "bogus", expected: { value: "approved" } },
+      origin,
+    );
+    await expectNoChange(s, r);
+  });
+
+  it("refuses invalid params as validation, not no-change, even when the delta is empty", async () => {
+    const s = await setup();
+    const r = await patchDoc(
+      s.d,
+      asDocId("fin"),
+      asBlockId("d"),
+      () => ({}),
+      writer,
+      {},
+      { affordance: "transition", params: { to: 42 } },
+    );
+    expect(rejectionOf(r).reason).toBe("validation");
+    expect(rejectionOf(r).diagnostics.map((diag) => diag.code)).toEqual(["E_PARAM_SCHEMA"]);
+    expect(await s.d.storage.read(asDocId("fin"))).toBe(src);
+  });
+
+  it("refuses a stale version as stale-version, ahead of the no-change rule", async () => {
+    const s = await setup();
+    await patchDoc(s.d, asDocId("fin"), asBlockId("d"), { value: "approved" }, writer);
+    const r = await patchDoc(
+      s.d,
+      asDocId("fin"),
+      asBlockId("d"),
+      { value: "approved" },
+      writer,
+      { expectedVersion: docVersion(src) },
+      origin,
+    );
+    expect(rejectionOf(r).reason).toBe("stale-version");
+  });
+
+  it("leaves a direct patch with an empty delta committing as before", async () => {
+    const s = await setup();
+    const r = await patchDoc(s.d, asDocId("fin"), asBlockId("d"), {}, writer);
+    expect(r.ok).toBe(true);
+    expect(s.commits).toHaveLength(1);
+  });
+});
+
 describe("complexity limits and parse failures (fail-soft)", () => {
   /** The issue repro: about 8 KB, far below the size limit, but 8,000 containers deep. */
   const deep = `# t\n\n${">".repeat(8000)} x\n`;
