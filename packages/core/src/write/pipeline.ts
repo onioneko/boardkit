@@ -694,6 +694,11 @@ export async function writeDoc(
  * attrs as `current`), with nothing written or emitted; a direct patch with an
  * empty delta still commits.
  *
+ * Block ids are unique within a document: a delta that gives the block the
+ * `id` of another block in the same document is rejected with reason `patch`
+ * (`E_PATCH_ID_TAKEN`) and nothing is written. A rename to an unused id is
+ * accepted.
+ *
  * @param deps The injected pipeline dependencies.
  * @param docId The document containing the block.
  * @param blockId The block whose attrs change.
@@ -845,6 +850,23 @@ export async function patchDoc(
           ],
           block.attrs,
         );
+      }
+
+      // Block ids are unique within a document: a rename may not take the id
+      // of another block. The rest of the document is unchanged by the patch,
+      // so the target is the only block whose id can move.
+      const newId = effectiveDelta.id;
+      if (
+        typeof newId === "string" &&
+        blocksOf(currentParsed).some((b) => b !== found && b.blockId === newId)
+      ) {
+        return rejection("patch", [
+          diagnostic(
+            "E_PATCH_ID_TAKEN",
+            `block ${proposed.blockId} cannot take id "${newId}": another block in ${docId} has it`,
+            { nodeId: proposed.blockId },
+          ),
+        ]);
       }
 
       const { src, diagnostics: patchDiags } = applyPatch({

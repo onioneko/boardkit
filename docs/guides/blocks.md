@@ -86,6 +86,12 @@ and one of these diagnostics, and the document is left unchanged:
 The same refusals apply when a full-text write must truncate a block's bounded history: there
 the write is rejected with reason `validation`.
 
+A patch may change a block's `id`. Block ids only need to be unique within one document, so a
+rename to an id no other block in the document has is accepted, and its commit records a
+`block.removed` event for the old id and a `block.added` event for the new one. A patch that would give the block the id of another block in the same document is
+rejected with reason `patch` and diagnostic `E_PATCH_ID_TAKEN`, and the document is left
+unchanged.
+
 ## Live values: `sources` and the `values` record
 
 Prose declares its live values inline with `{{source:…}}`. A block declares them with

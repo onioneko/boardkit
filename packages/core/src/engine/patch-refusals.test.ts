@@ -4,8 +4,10 @@ import { createMemStorage } from "../ports/mem.js";
 import { createEngine } from "./engine.js";
 
 /**
- * Patch refusals that leave the document and the event log untouched: an
- * intent whose delta changes nothing (`no-change`).
+ * Two refusals of `Engine.applyIntent` and `Engine.patch` that leave the
+ * document and the event log untouched: an intent whose delta changes nothing
+ * (`no-change`), and a patch that would give a block another block's id
+ * (`E_PATCH_ID_TAKEN`).
  */
 
 const writer = { kind: "human", id: "u1" } as const;
@@ -20,6 +22,15 @@ const lampType: BlockType = {
     additionalProperties: false,
   },
   affordances: [{ name: "light", patch: (attrs) => (attrs.on === true ? {} : { on: true }) }],
+};
+
+const statusType: BlockType = {
+  type: "status",
+  schema: {
+    type: "object",
+    required: ["id", "value"],
+    properties: { id: { type: "string" }, value: { type: "string" } },
+  },
 };
 
 describe("Engine.applyIntent: an intent that changes nothing", () => {
@@ -62,5 +73,34 @@ describe("Engine.applyIntent: an intent that changes nothing", () => {
     );
     expect(r.ok).toBe(true);
     expect((await engine.getBlock("room", "desk"))?.attrs.on).toBe(true);
+  });
+});
+
+describe("Engine.patch: block ids stay unique within a document", () => {
+  const content = "# D\n\n```status\nid: a\nvalue: x\n```\n\n```status\nid: b\nvalue: x\n```\n";
+
+  it("refuses a rename onto another block's id, leaving the document untouched", async () => {
+    const storage = createMemStorage();
+    const engine = createEngine({ storage, clock, blocks: [statusType] });
+    await engine.createDoc("d", { writer, content });
+    const eventsBefore = storage.getEvents().length;
+
+    const r = await engine.patch("d", "b", { writer, attrs: { id: "a" } });
+
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.rejection.reason).toBe("patch");
+    expect(r.rejection.diagnostics.map((d) => d.code)).toEqual(["E_PATCH_ID_TAKEN"]);
+    expect((await engine.getDoc("d"))?.src).toBe(content);
+    expect(storage.getEvents()).toHaveLength(eventsBefore);
+  });
+
+  it("accepts a rename to an unused id", async () => {
+    const engine = createEngine({ storage: createMemStorage(), clock, blocks: [statusType] });
+    await engine.createDoc("d", { writer, content });
+    const r = await engine.patch("d", "b", { writer, attrs: { id: "c" } });
+    expect(r.ok).toBe(true);
+    expect(await engine.getBlock("d", "b")).toBeUndefined();
+    expect((await engine.getBlock("d", "c"))?.attrs).toEqual({ id: "c", value: "x" });
   });
 });

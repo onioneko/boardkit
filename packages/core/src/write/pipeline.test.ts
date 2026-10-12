@@ -826,6 +826,66 @@ describe("intent-originated patch that changes nothing (no-change)", () => {
   });
 });
 
+describe("block id uniqueness on patch", () => {
+  const src =
+    "```status\nid: a\nstates: [x, y]\nvalue: x\n```\n\n```status\nid: b\nstates: [x, y]\nvalue: x\n```\n";
+
+  /** The block ids of the stored `fin` document, in document order. */
+  async function storedIds(storage: Storage): Promise<string[]> {
+    const raw = await storage.read(asDocId("fin"));
+    if (raw === undefined) throw new Error("missing doc fin");
+    const parsed = parseDoc(raw, { blockTypes: new Set(types.keys()) });
+    return parsed.nodes.filter((n): n is Block => "blockId" in n).map((b) => b.blockId);
+  }
+
+  it("accepts a rename to an unused id", async () => {
+    const d = deps();
+    await createDoc(d, asDocId("fin"), writer, src);
+    const r = await patchDoc(d, asDocId("fin"), asBlockId("b"), { id: "c" }, writer);
+    expect(r.ok).toBe(true);
+    expect(await storedIds(d.storage)).toEqual(["a", "c"]);
+  });
+
+  it("refuses a rename onto another block's id, writing nothing", async () => {
+    const d = deps();
+    await createDoc(d, asDocId("fin"), writer, src);
+    const eventsBefore = d.storage.getEvents().length;
+    const r = await patchDoc(d, asDocId("fin"), asBlockId("b"), { id: "a" }, writer);
+    expect(rejectionOf(r).reason).toBe("patch");
+    expect(rejectionOf(r).diagnostics.map((diag) => diag.code)).toEqual(["E_PATCH_ID_TAKEN"]);
+    expect(rejectionOf(r).diagnostics[0]?.nodeId).toBe("b");
+    expect(await d.storage.read(asDocId("fin"))).toBe(src);
+    expect(d.storage.getEvents()).toHaveLength(eventsBefore);
+  });
+
+  it("refuses an intent whose delta renames onto another block's id", async () => {
+    const d = deps();
+    await createDoc(d, asDocId("fin"), writer, src);
+    const r = await patchDoc(
+      d,
+      asDocId("fin"),
+      asBlockId("b"),
+      () => ({ id: "a", value: "y" }),
+      writer,
+      {},
+      { affordance: "transition", params: { to: "y" } },
+    );
+    expect(rejectionOf(r).reason).toBe("patch");
+    expect(rejectionOf(r).diagnostics.map((diag) => diag.code)).toEqual(["E_PATCH_ID_TAKEN"]);
+    expect(await d.storage.read(asDocId("fin"))).toBe(src);
+  });
+
+  it("leaves a patch that keeps the id unaffected", async () => {
+    const d = deps();
+    await createDoc(d, asDocId("fin"), writer, src);
+    const same = await patchDoc(d, asDocId("fin"), asBlockId("b"), { id: "b", value: "y" }, writer);
+    expect(same.ok).toBe(true);
+    const other = await patchDoc(d, asDocId("fin"), asBlockId("a"), { value: "y" }, writer);
+    expect(other.ok).toBe(true);
+    expect(await storedIds(d.storage)).toEqual(["a", "b"]);
+  });
+});
+
 describe("complexity limits and parse failures (fail-soft)", () => {
   /** The issue repro: about 8 KB, far below the size limit, but 8,000 containers deep. */
   const deep = `# t\n\n${">".repeat(8000)} x\n`;
