@@ -108,7 +108,8 @@ function reject(reason: string, diagnostics: readonly Diagnostic[]): WriteResult
  * @param deps The injected pipeline dependencies.
  * @param intent The request (doc, block, affordance, params, guards).
  * @param writer The write's author (audit provenance).
- * @returns The write result from the patch pipeline.
+ * @returns The write result from the patch pipeline, which rejects a decoded
+ * delta that changes no value with `no-change`.
  */
 export async function applyIntent(
   deps: PipelineDeps,

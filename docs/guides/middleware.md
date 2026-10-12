@@ -95,7 +95,10 @@ opaque function. Both fields are mutable, and the pipeline re-checks them inside
 looks the (possibly amended) affordance up on the block type — an unknown name rejects with
 `E_UNKNOWN_AFFORDANCE` — and validates the proposal's params against that affordance's schema,
 a mismatch rejecting at stage `validation` with `E_PARAM_SCHEMA`, before decoding the delta
-with them.
+with them. After the attrs validation and the compare-and-set, a decoded delta that changes no
+value is rejected with `no-change` (`E_INTENT_NO_CHANGE`; see
+[Intents](intents.md#an-intent-that-changes-nothing)), so a middleware does not need to refuse
+such intents itself.
 
 Amending `params` is the supported amendment: the delta is decoded with the params middleware
 left behind. Amending `affordance` only re-targets that validation lookup — the delta function

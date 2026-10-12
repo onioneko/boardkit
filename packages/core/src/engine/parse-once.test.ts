@@ -355,6 +355,7 @@ describe("a shared, frozen parse never leaks out of the cache (#3)", () => {
       { writer },
     );
     expect(r.ok).toBe(true);
+    expect((await engine.getBlock("t", "t"))?.attrs.items).toEqual(["a", "z"]);
   });
 });
 

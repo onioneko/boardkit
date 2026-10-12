@@ -125,7 +125,7 @@ export type WriteResult =
       readonly ok: false;
       /** Why the write was rejected. */
       readonly rejection: {
-        /** Machine-readable rejection reason: `write-domain`, `missing-doc`, `validation`, `stale-version`, `expected-mismatch`, `missing-block`, `unknown-type`, `unknown-affordance`, `patch`, `unsupported`, `exists`, `invalid-id`, `too-large`, `too-complex`, `import-amended`, … */
+        /** Machine-readable rejection reason: `write-domain`, `missing-doc`, `validation`, `stale-version`, `expected-mismatch`, `no-change`, `missing-block`, `unknown-type`, `unknown-affordance`, `patch`, `unsupported`, `exists`, `invalid-id`, `too-large`, `too-complex`, `import-amended`, … */
         readonly reason: string;
         /** The live value(s) the write conflicted with (e.g. the current version or attrs), when relevant. */
         readonly current?: unknown;
@@ -688,7 +688,16 @@ export async function writeDoc(
  * *what the write means* instead of an opaque function. Inside the lock the
  * affordance is looked up on the block type (unknown → `unknown-affordance`)
  * and the proposal's params — including an amendment a middleware made — are
- * validated against its schema before the delta is decoded with them.
+ * validated against its schema before the delta is decoded with them. After
+ * the compare-and-set decision, an intent-originated patch whose delta changes
+ * no value is rejected with `no-change` (`E_INTENT_NO_CHANGE`, the current
+ * attrs as `current`), with nothing written or emitted; a direct patch with an
+ * empty delta still commits.
+ *
+ * Ids are unique within a document, across blocks and sections: a delta that
+ * gives the block the `id` of another block or of a section in the same
+ * document is rejected with reason `patch` (`E_PATCH_ID_TAKEN`) and nothing is
+ * written. A rename to an unused id is accepted.
  *
  * @param deps The injected pipeline dependencies.
  * @param docId The document containing the block.
@@ -789,11 +798,13 @@ export async function patchDoc(
 
       // Decode inside the lock: a function delta recomputes against the
       // freshly-read current attrs (and the proposal's params, as middleware
-      // left them), so no writer applies a stale precomputation.
+      // left them), so no writer applies a stale precomputation. The function
+      // gets its own copy: one that mutates its argument must not change the
+      // current attrs the compare-and-set and the effective delta read.
       const isFunctionDelta = typeof proposed.delta === "function";
       const resolvedDelta: Record<string, unknown> =
         typeof proposed.delta === "function"
-          ? proposed.delta(block.attrs, proposed.params)
+          ? proposed.delta(structuredClone(block.attrs), proposed.params)
           : proposed.delta;
 
       // VALIDATE the merged attrs (shallow merge; arrays replaced wholesale).
@@ -821,6 +832,44 @@ export async function patchDoc(
         if (!equal(block.attrs[key], enforced.attrs[key])) {
           effectiveDelta[key] = enforced.attrs[key];
         }
+      }
+
+      // An intent whose delta changes no value is refused: committing it would
+      // record a commit and emit `doc.updated` for a write that changed nothing,
+      // and the sender would never learn its move no longer applies. Direct
+      // patches keep committing an empty delta.
+      if (proposed.affordance !== undefined && Object.keys(effectiveDelta).length === 0) {
+        return rejection(
+          "no-change",
+          [
+            diagnostic(
+              "E_INTENT_NO_CHANGE",
+              `affordance "${proposed.affordance}" changes nothing on block ${proposed.blockId}`,
+              { nodeId: proposed.blockId },
+            ),
+          ],
+          block.attrs,
+        );
+      }
+
+      // Node ids are unique within a document, across blocks and sections: a
+      // rename may not take the id of another block or of a section (the diff
+      // keys both in one map). The rest of the document is unchanged by the
+      // patch, so the target is the only node whose id can move.
+      const newId = effectiveDelta.id;
+      if (
+        typeof newId === "string" &&
+        currentParsed.nodes.some(
+          (n) => n !== found && ("sectionId" in n ? n.sectionId : n.blockId) === newId,
+        )
+      ) {
+        return rejection("patch", [
+          diagnostic(
+            "E_PATCH_ID_TAKEN",
+            `block ${proposed.blockId} cannot take id "${newId}": another block or section in ${docId} has it`,
+            { nodeId: proposed.blockId },
+          ),
+        ]);
       }
 
       const { src, diagnostics: patchDiags } = applyPatch({

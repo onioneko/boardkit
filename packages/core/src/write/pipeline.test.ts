@@ -725,6 +725,193 @@ describe("patch proposal origin (intent-originated patches)", () => {
   });
 });
 
+describe("intent-originated patch that changes nothing (no-change)", () => {
+  const src = "```status\nid: d\nstates: [pending, approved]\nvalue: pending\n```\n";
+  const origin = { affordance: "transition", params: { to: "approved" } } as const;
+
+  type MemDeps = PipelineDeps & { storage: ReturnType<typeof createMemStorage> };
+
+  /** A fresh `fin` document; `commits` records every commit after the create. */
+  async function setup(): Promise<{ d: MemDeps; commits: unknown[]; eventsBefore: number }> {
+    const commits: unknown[] = [];
+    const d: MemDeps = { ...deps(), onCommit: (c) => commits.push(c) };
+    await createDoc(d, asDocId("fin"), writer, src);
+    commits.length = 0;
+    return { d, commits, eventsBefore: d.storage.getEvents().length };
+  }
+
+  /** Assert a no-change refusal that wrote and emitted nothing. */
+  async function expectNoChange(
+    s: { d: MemDeps; commits: unknown[]; eventsBefore: number },
+    r: WriteResult,
+  ): Promise<void> {
+    expect(rejectionOf(r).reason).toBe("no-change");
+    expect(rejectionOf(r).diagnostics.map((diag) => diag.code)).toEqual(["E_INTENT_NO_CHANGE"]);
+    expect(rejectionOf(r).current).toMatchObject({ id: "d", value: "pending" });
+    expect(await s.d.storage.read(asDocId("fin"))).toBe(src);
+    expect(s.commits).toEqual([]);
+    expect(s.d.storage.getEvents()).toHaveLength(s.eventsBefore);
+  }
+
+  it("refuses a guard that returns {}, writing and emitting nothing", async () => {
+    const s = await setup();
+    const r = await patchDoc(s.d, asDocId("fin"), asBlockId("d"), () => ({}), writer, {}, origin);
+    await expectNoChange(s, r);
+  });
+
+  it("refuses a delta equal to the current values", async () => {
+    const s = await setup();
+    const r = await patchDoc(
+      s.d,
+      asDocId("fin"),
+      asBlockId("d"),
+      () => ({ value: "pending", states: ["pending", "approved"] }),
+      writer,
+      {},
+      { affordance: "transition", params: { to: "pending" } },
+    );
+    await expectNoChange(s, r);
+  });
+
+  it("refuses an empty delta even when a strict expected is stale", async () => {
+    const s = await setup();
+    const r = await patchDoc(
+      s.d,
+      asDocId("fin"),
+      asBlockId("d"),
+      () => ({}),
+      writer,
+      { expectedVersion: "bogus", expected: { value: "approved" } },
+      origin,
+    );
+    await expectNoChange(s, r);
+  });
+
+  it("refuses a delta that sets a missing key to undefined", async () => {
+    const s = await setup();
+    const r = await patchDoc(
+      s.d,
+      asDocId("fin"),
+      asBlockId("d"),
+      () => ({ absent: undefined }),
+      writer,
+      {},
+      origin,
+    );
+    await expectNoChange(s, r);
+  });
+
+  it("refuses invalid params as validation, not no-change, even when the delta is empty", async () => {
+    const s = await setup();
+    const r = await patchDoc(
+      s.d,
+      asDocId("fin"),
+      asBlockId("d"),
+      () => ({}),
+      writer,
+      {},
+      { affordance: "transition", params: { to: 42 } },
+    );
+    expect(rejectionOf(r).reason).toBe("validation");
+    expect(rejectionOf(r).diagnostics.map((diag) => diag.code)).toEqual(["E_PARAM_SCHEMA"]);
+    expect(await s.d.storage.read(asDocId("fin"))).toBe(src);
+  });
+
+  it("refuses a stale version as stale-version, ahead of the no-change rule", async () => {
+    const s = await setup();
+    await patchDoc(s.d, asDocId("fin"), asBlockId("d"), { value: "approved" }, writer);
+    const r = await patchDoc(
+      s.d,
+      asDocId("fin"),
+      asBlockId("d"),
+      { value: "approved" },
+      writer,
+      { expectedVersion: docVersion(src) },
+      origin,
+    );
+    expect(rejectionOf(r).reason).toBe("stale-version");
+  });
+
+  it("leaves a direct patch with an empty delta committing as before", async () => {
+    const s = await setup();
+    const r = await patchDoc(s.d, asDocId("fin"), asBlockId("d"), {}, writer);
+    expect(r.ok).toBe(true);
+    expect(s.commits).toHaveLength(1);
+  });
+});
+
+describe("block id uniqueness on patch", () => {
+  const src =
+    "```status\nid: a\nstates: [x, y]\nvalue: x\n```\n\n```status\nid: b\nstates: [x, y]\nvalue: x\n```\n";
+
+  /** The block ids of the stored `fin` document, in document order. */
+  async function storedIds(storage: Storage): Promise<string[]> {
+    const raw = await storage.read(asDocId("fin"));
+    if (raw === undefined) throw new Error("missing doc fin");
+    const parsed = parseDoc(raw, { blockTypes: new Set(types.keys()) });
+    return parsed.nodes.filter((n): n is Block => "blockId" in n).map((b) => b.blockId);
+  }
+
+  it("accepts a rename to an unused id", async () => {
+    const d = deps();
+    await createDoc(d, asDocId("fin"), writer, src);
+    const r = await patchDoc(d, asDocId("fin"), asBlockId("b"), { id: "c" }, writer);
+    expect(r.ok).toBe(true);
+    expect(await storedIds(d.storage)).toEqual(["a", "c"]);
+  });
+
+  it("refuses a rename onto another block's id, writing nothing", async () => {
+    const d = deps();
+    await createDoc(d, asDocId("fin"), writer, src);
+    const eventsBefore = d.storage.getEvents().length;
+    const r = await patchDoc(d, asDocId("fin"), asBlockId("b"), { id: "a" }, writer);
+    expect(rejectionOf(r).reason).toBe("patch");
+    expect(rejectionOf(r).diagnostics.map((diag) => diag.code)).toEqual(["E_PATCH_ID_TAKEN"]);
+    expect(rejectionOf(r).diagnostics[0]?.nodeId).toBe("b");
+    expect(await d.storage.read(asDocId("fin"))).toBe(src);
+    expect(d.storage.getEvents()).toHaveLength(eventsBefore);
+  });
+
+  it("refuses a rename onto a section's id, writing nothing", async () => {
+    const d = deps();
+    const withHeading = `# Room {#hall}\n\n${src}`;
+    await createDoc(d, asDocId("fin"), writer, withHeading);
+    const eventsBefore = d.storage.getEvents().length;
+    const r = await patchDoc(d, asDocId("fin"), asBlockId("b"), { id: "hall" }, writer);
+    expect(rejectionOf(r).reason).toBe("patch");
+    expect(rejectionOf(r).diagnostics.map((diag) => diag.code)).toEqual(["E_PATCH_ID_TAKEN"]);
+    expect(await d.storage.read(asDocId("fin"))).toBe(withHeading);
+    expect(d.storage.getEvents()).toHaveLength(eventsBefore);
+  });
+
+  it("refuses an intent whose delta renames onto another block's id", async () => {
+    const d = deps();
+    await createDoc(d, asDocId("fin"), writer, src);
+    const r = await patchDoc(
+      d,
+      asDocId("fin"),
+      asBlockId("b"),
+      () => ({ id: "a", value: "y" }),
+      writer,
+      {},
+      { affordance: "transition", params: { to: "y" } },
+    );
+    expect(rejectionOf(r).reason).toBe("patch");
+    expect(rejectionOf(r).diagnostics.map((diag) => diag.code)).toEqual(["E_PATCH_ID_TAKEN"]);
+    expect(await d.storage.read(asDocId("fin"))).toBe(src);
+  });
+
+  it("leaves a patch that keeps the id unaffected", async () => {
+    const d = deps();
+    await createDoc(d, asDocId("fin"), writer, src);
+    const same = await patchDoc(d, asDocId("fin"), asBlockId("b"), { id: "b", value: "y" }, writer);
+    expect(same.ok).toBe(true);
+    const other = await patchDoc(d, asDocId("fin"), asBlockId("a"), { value: "y" }, writer);
+    expect(other.ok).toBe(true);
+    expect(await storedIds(d.storage)).toEqual(["a", "b"]);
+  });
+});
+
 describe("complexity limits and parse failures (fail-soft)", () => {
   /** The issue repro: about 8 KB, far below the size limit, but 8,000 containers deep. */
   const deep = `# t\n\n${">".repeat(8000)} x\n`;
