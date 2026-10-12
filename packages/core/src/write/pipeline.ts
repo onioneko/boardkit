@@ -694,10 +694,10 @@ export async function writeDoc(
  * attrs as `current`), with nothing written or emitted; a direct patch with an
  * empty delta still commits.
  *
- * Block ids are unique within a document: a delta that gives the block the
- * `id` of another block in the same document is rejected with reason `patch`
- * (`E_PATCH_ID_TAKEN`) and nothing is written. A rename to an unused id is
- * accepted.
+ * Ids are unique within a document, across blocks and sections: a delta that
+ * gives the block the `id` of another block or of a section in the same
+ * document is rejected with reason `patch` (`E_PATCH_ID_TAKEN`) and nothing is
+ * written. A rename to an unused id is accepted.
  *
  * @param deps The injected pipeline dependencies.
  * @param docId The document containing the block.
@@ -852,18 +852,21 @@ export async function patchDoc(
         );
       }
 
-      // Block ids are unique within a document: a rename may not take the id
-      // of another block. The rest of the document is unchanged by the patch,
-      // so the target is the only block whose id can move.
+      // Node ids are unique within a document, across blocks and sections: a
+      // rename may not take the id of another block or of a section (the diff
+      // keys both in one map). The rest of the document is unchanged by the
+      // patch, so the target is the only node whose id can move.
       const newId = effectiveDelta.id;
       if (
         typeof newId === "string" &&
-        blocksOf(currentParsed).some((b) => b !== found && b.blockId === newId)
+        currentParsed.nodes.some(
+          (n) => n !== found && ("sectionId" in n ? n.sectionId : n.blockId) === newId,
+        )
       ) {
         return rejection("patch", [
           diagnostic(
             "E_PATCH_ID_TAKEN",
-            `block ${proposed.blockId} cannot take id "${newId}": another block in ${docId} has it`,
+            `block ${proposed.blockId} cannot take id "${newId}": another block or section in ${docId} has it`,
             { nodeId: proposed.blockId },
           ),
         ]);

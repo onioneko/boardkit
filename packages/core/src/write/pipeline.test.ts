@@ -787,6 +787,20 @@ describe("intent-originated patch that changes nothing (no-change)", () => {
     await expectNoChange(s, r);
   });
 
+  it("refuses a delta that sets a missing key to undefined", async () => {
+    const s = await setup();
+    const r = await patchDoc(
+      s.d,
+      asDocId("fin"),
+      asBlockId("d"),
+      () => ({ absent: undefined }),
+      writer,
+      {},
+      origin,
+    );
+    await expectNoChange(s, r);
+  });
+
   it("refuses invalid params as validation, not no-change, even when the delta is empty", async () => {
     const s = await setup();
     const r = await patchDoc(
@@ -855,6 +869,18 @@ describe("block id uniqueness on patch", () => {
     expect(rejectionOf(r).diagnostics.map((diag) => diag.code)).toEqual(["E_PATCH_ID_TAKEN"]);
     expect(rejectionOf(r).diagnostics[0]?.nodeId).toBe("b");
     expect(await d.storage.read(asDocId("fin"))).toBe(src);
+    expect(d.storage.getEvents()).toHaveLength(eventsBefore);
+  });
+
+  it("refuses a rename onto a section's id, writing nothing", async () => {
+    const d = deps();
+    const withHeading = `# Room {#hall}\n\n${src}`;
+    await createDoc(d, asDocId("fin"), writer, withHeading);
+    const eventsBefore = d.storage.getEvents().length;
+    const r = await patchDoc(d, asDocId("fin"), asBlockId("b"), { id: "hall" }, writer);
+    expect(rejectionOf(r).reason).toBe("patch");
+    expect(rejectionOf(r).diagnostics.map((diag) => diag.code)).toEqual(["E_PATCH_ID_TAKEN"]);
+    expect(await d.storage.read(asDocId("fin"))).toBe(withHeading);
     expect(d.storage.getEvents()).toHaveLength(eventsBefore);
   });
 

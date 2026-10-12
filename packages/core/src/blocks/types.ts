@@ -39,7 +39,7 @@ export interface AffordanceDecl<A extends Record<string, unknown> = Record<strin
   /**
    * Pure function mapping the block's current attrs plus the intent params to an
    * attrs delta for the patch pipeline.
-   * @param attrs The block's current attrs (read-only).
+   * @param attrs The block's current attrs (read-only; the pipeline passes a copy).
    * @param params The intent's params (already schema-validated when a schema is declared).
    * @returns The top-level attrs delta to apply. A delta that changes no value
    *   (`{}`, or only the values the block already has) makes the intent fail

@@ -95,11 +95,39 @@ describe("Engine.patch: block ids stay unique within a document", () => {
     expect(storage.getEvents()).toHaveLength(eventsBefore);
   });
 
-  it("accepts a rename to an unused id", async () => {
+  it("refuses a rename onto a heading's id, leaving the document untouched", async () => {
+    const storage = createMemStorage();
+    const engine = createEngine({ storage, clock, blocks: [statusType] });
+    await engine.createDoc("d", { writer, content });
+    const sectionId = (await engine.docInfo("d"))?.sections[0]?.sectionId;
+    expect(sectionId).toBeDefined();
+    const eventsBefore = storage.getEvents().length;
+
+    const r = await engine.patch("d", "b", { writer, attrs: { id: sectionId } });
+
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.rejection.diagnostics.map((d) => d.code)).toEqual(["E_PATCH_ID_TAKEN"]);
+    expect((await engine.getDoc("d"))?.src).toBe(content);
+    expect(storage.getEvents()).toHaveLength(eventsBefore);
+  });
+
+  it("accepts a rename to an unused id, recording block.removed and block.added", async () => {
     const engine = createEngine({ storage: createMemStorage(), clock, blocks: [statusType] });
     await engine.createDoc("d", { writer, content });
     const r = await engine.patch("d", "b", { writer, attrs: { id: "c" } });
     expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    const blockEvents = (r.events ?? [])
+      .filter((e) => e.type === "block.added" || e.type === "block.removed")
+      .map((e) => ({ type: e.type, blockId: e.blockId }));
+    expect(blockEvents).toEqual(
+      expect.arrayContaining([
+        { type: "block.removed", blockId: "b" },
+        { type: "block.added", blockId: "c" },
+      ]),
+    );
+    expect(blockEvents).toHaveLength(2);
     expect(await engine.getBlock("d", "b")).toBeUndefined();
     expect((await engine.getBlock("d", "c"))?.attrs).toEqual({ id: "c", value: "x" });
   });

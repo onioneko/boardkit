@@ -431,8 +431,9 @@ export interface Engine {
    * @param opts The write's author, the top-level attrs delta (shallow merge;
    *   arrays replaced wholesale), and optional compare-and-set guards.
    * @returns The write result (new version and emitted events on success). A
-   *   delta that gives the block another block's `id` is rejected with reason
-   *   `patch` (`E_PATCH_ID_TAKEN`); a rename to an unused id is accepted.
+   *   delta that gives the block the `id` of another block or of a section in
+   *   the document is rejected with reason `patch` (`E_PATCH_ID_TAKEN`); a
+   *   rename to an unused id is accepted.
    * @example
    * ```ts
    * const result = await engine.patch("fin", "dec-macbook", {
